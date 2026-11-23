@@ -5,7 +5,7 @@ joint control (`pd_joint_delta_pos`). This file is the running log for this part
 its results, what we concluded, and what we changed next. **Add to it; don't rewrite history.**
 
 Contents: [Role](#role-in-the-project) · [How to run](#how-to-run) · [Setup](#setup-shared-with-the-team) ·
-[Run 1](#run-1-bc-on-released-demos) · [Run 2](#run-2-more-expert-data--dagger) ·
+[Run 1](#run-1-bc-on-released-demos) · [Run 2](#run-2-more-expert-data--dagger) · [Next steps](#next-steps-proposed-not-started) ·
 [Decisions](#decisions-log) · [Ideas and open questions](#ideas-and-open-questions) · [Changelog](#changelog)
 
 ## Role in the project
@@ -109,7 +109,8 @@ loads and runs, we are not limited to the 999 recorded demos.
 
 ## Run 2: more expert data + DAgger
 
-**Status:** built, not yet run. **Notebook:** `Train_PushT_State_BC_DAgger.ipynb`.
+**Date:** 2026-11-22 (Pacific). **Drive session:** `state_bc/20261123T031621Z_run2_dagger`.
+**Notebook:** `Train_PushT_State_BC_DAgger.ipynb`. Colab L4. **Status:** completed; results [below](#run-2-results).
 
 ### What changes, and why
 
@@ -134,6 +135,65 @@ validation and test seeds, metrics, checkpoint selection by validation success.
 - **Validation action MSE:** should drop well below run 1's 0.043 floor if overfitting was the problem.
 - **Target:** success-once close to the expert's 98–100%.
 
+### Run 2 results
+
+**Headline (test seeds 5001, 100 episodes, selected checkpoint = round 2):**
+
+| Policy | Success once | Success at end | Mean steps to first success |
+|---|---|---|---|
+| BC teacher, run 1 | 19% | 10% | 43.7 |
+| **BC teacher, run 2** | **98%** | **78%** | 31.4 |
+| Released PPO expert | 100% | 72% | 30.5 |
+
+The BC teacher now matches the expert. Its 78% vs 72% success-at-end is within noise for 100 episodes
+(standard error about 4–5 points), so read it as "same as the expert", not "better".
+
+**Expert rollouts (8,192 episodes, 819,200 transitions).** Expert success by action-noise level, averaged over two batches each:
+
+| Noise std | 0.0 | 0.1 | 0.2 | 0.3 |
+|---|---|---|---|---|
+| Success once | 98% | 97% | 93% | 65–66% |
+| Success at end | 69–70% | 68–69% | 46–47% | 15–17% |
+
+Noise up to 0.1 barely hurts the expert. At 0.3 it often fails, so those episodes are mostly off-course states.
+
+**Per round (validation seeds 1001, best of 4 evaluations per round):**
+
+| Round | Training data | Transitions | Val success once | Val success at end | Driving BC success once / at end (during collection) | Final val action MSE |
+|---|---|---|---|---|---|---|
+| 0 | demos + expert rollouts | 885,433 | 98% | 71% | | 0.026 |
+| 1 | + DAgger round 1 | 1,090,233 | 97% | 73% | 96% / 70% (round 0 teacher) | 0.030 |
+| 2 | + DAgger round 2 | 1,295,033 | **100%** | **77%** | 96% / 69% (round 1 teacher) | 0.030 |
+| 3 | + DAgger round 3 | 1,499,833 | 99% | 69% | 97% / 73% (round 2 teacher) | 0.032 |
+| 4 | + DAgger round 4 | 1,704,633 | 98% | 68% | 97% / 68% (round 3 teacher) | 0.033 |
+
+Each training took 2.8 minutes. The demo replay took about 2 minutes, and the first audit in a fresh runtime downloads the PhysX GPU library.
+
+### Run 2 analysis
+- **More expert data did almost all the work.** Round 0, before any DAgger, already reached 98% / 71% on validation,
+  up from run 1's 26% / 12%. Run 1's problem was mainly too little data.
+- **DAgger added little or nothing measurable.** Rounds 1–4 sit between 97–100% success-once and 68–77% success-at-end,
+  all within the noise of 100-episode evaluations. Round 2 was selected because it had the highest validation number,
+  but picking the best of 20 noisy evaluations inflates that number. The fresh test seeds (98% / 78%) are the honest estimate.
+- **Why DAgger had little to fix:** the round 0 teacher already succeeded 96% of the time while driving, so it rarely
+  reached states the expert data did not cover. The noisy expert rollouts probably supplied most of the recovery data DAgger is meant to add.
+- **Validation action MSE rose slightly with DAgger** (0.026 → 0.033). Validation states come from expert demos, while
+  later rounds add more BC-visited states, so the same 2 × 256 network spreads over a wider mix. Closed-loop success did not drop, so this is not a problem.
+- **The remaining gap is success-at-end,** which the expert shares: both reach the goal almost always but leave it in roughly 25–30% of episodes.
+
+### Run 2 conclusion
+The first full-state BC teacher is competent: `runs/bc_dagger_seed0/teacher.pt` (copy of `round2/best.pt`) in the session folder.
+For future BC teachers distilled from an expert, **expert rollouts with action noise plus round 0 training is probably enough.**
+DAgger can be dropped or cut to one round to save about 15 minutes per teacher. That is an inference from one run with one expert,
+so check it again when distilling a different expert.
+
+## Next steps (proposed, not started)
+1. **ICL rollout collection:** add a `collect` mode where the teacher both drives and labels (recording its own actions),
+   and agree on the rollout format with Jimmy and whoever trains the transformer.
+2. **Teacher diversity:** start producing several behaviorally different BC teachers (see [Making many different teachers](#making-many-different-teachers)).
+   With the run 2 recipe, each teacher costs about 10 minutes of collection and training.
+3. **Diversity checks:** action differences on shared states and a teacher-identification classifier, before scaling up.
+
 ## Decisions log
 
 | Date | Decision | Reason |
@@ -150,6 +210,9 @@ validation and test seeds, metrics, checkpoint selection by validation success.
 | 2026-11-22 | Checkpoints chosen on validation seeds; test seeds used once at the end | Never select on test data |
 | 2026-11-22 | Run 2 adds expert rollouts and DAgger, other settings unchanged | Run 1 diagnosis: overfitting and compounding errors |
 | 2026-11-22 | No Claude co-author lines in commits | Nathan's preference |
+| 2026-11-22 | Accept run 2's round 2 checkpoint as the first full-state BC teacher | 98% / 78% on test seeds, matching the expert's 100% / 72% |
+| 2026-11-22 | Treat DAgger as optional for future expert-distilled BC teachers | Run 2 round 0 (no DAgger) already matched the expert; later rounds were within noise |
+| 2026-11-22 | **v1 of the project focuses on out-of-distribution tests**; Garg-style parameterized policy families are deferred | Group decision. Izat is updating the repo's project context to match; BC work waits for that update. |
 
 ## Ideas and open questions
 
@@ -179,6 +242,72 @@ short fine-tunes of one parent PPO policy stayed almost identical (contact point
 - Action differences between teachers on a shared set of states.
 - Identifiability: a small classifier that guesses the teacher from a short snippet. If it cannot, the transformer cannot use context either.
 
+### Number of teachers vs task diversity (discussed 2026-11-22)
+Garg's models each trained on one function class, but drew a **new random function for every prompt**
+(roughly 30 million per model). Raventós et al. (2023) found that with a *finite* pool of tasks, a transformer only learns a general
+in-context algorithm past a diversity threshold (thousands of tasks in their linear-regression setup). Below it, it memorizes the pool.
+With tens of trained teachers, ours will likely learn to recognize training-like teachers rather than infer arbitrary new ones.
+Options: frame the claim around a small family and report performance vs number of training teachers; add a procedural family for Garg-scale diversity; or both.
+(The paper's exact numbers are from memory; check before citing.)
+
+### Proposed pivot: out-of-distribution generalization (discussed 2026-11-22, not decided)
+**Group idea:** train with starting states in only 3 of 4 quadrants, then test whether the transformer can act correctly in the
+4th quadrant when given demonstrations from there in context.
+
+**Assessment:**
+- It is a real and interesting question, close to Garg's input-distribution-shift tests: can context substitute for training coverage?
+- **Key risk: with a single teacher, the transformer has no reason to read the context.** If the same policy generates every prompt,
+  the query action is fully determined by the query state, so the weights can learn the policy directly and ignore the demos.
+  ICL appears in Garg's setup because the function changes from prompt to prompt and only the context reveals which one.
+  So something must vary across prompts that only the context reveals.
+- **Ways to keep context necessary:**
+  1. Keep multiple teachers, and add the quadrant hold-out as an extra test axis.
+  2. **Hidden goal:** randomize the goal pose and remove it from the observation, so demos are the only way to learn where to push.
+     Gives continuous, unlimited task diversity like Garg's random w. The OOD version holds out goals in one quadrant.
+     Cost: PushT-v1's goal is fixed, so this needs goal-randomized experts (new PPO training, practical in state mode).
+- **Design if adopted:** train on teachers T_train with starts in Q1–Q3. Test four cells: {training teacher, held-out teacher} × {Q1–Q3, Q4}.
+  Context conditions: correct teacher from Q4, correct teacher from Q1–Q3, none, wrong teacher.
+  Baseline: a plain BC policy trained only on Q1–Q3 (pure extrapolation without context).
+- **Variant: move the goal but keep it visible** (asked 2026-11-22). Then every teacher is one goal-conditioned policy
+  π(state, goal), and the goal in the query observation already says where to push. The weights can learn π directly,
+  so context is again redundant in training. This is the "goal conditioning alone is not demonstration-conditioned
+  policy inference" case from `CODEX_CONTEXT.md`. A held-out goal quadrant then tests ordinary goal-conditioned extrapolation, not ICL.
+  It becomes an ICL question only if something else still varies per prompt (multiple teachers), with the goal shift as the OOD axis.
+  Middle grounds: show the goal only coarsely or with noise, so demos add information.
+- **Practical notes:** quadrants would split the T-block spawn region (0.2 × 0.3 m), which needs custom resets.
+  Teachers trained on the full region already act competently in Q4, so they can supply Q4 demos.
+
+### Garg-style policy families (discussed 2026-11-22; OOD tests set aside for now)
+Goal: many policies per "function class", fair evaluation when policies agree on some states, and evidence the transformer is not memorizing.
+
+**1. Make policies parameterized, like Garg's random w.** Train one policy conditioned on a hidden parameter z, π(s, z).
+Draw a fresh z for every prompt, so one training run yields unlimited teachers. z is never in the observation.
+Candidate classes, each with infinite members:
+- **Reward-parameterized family:** one PPO policy trained across sampled reward weights, e.g. the proposal's
+  r = r_task − λx·vx² − λy·vy², with z = (λx, λy) as an extra input. Strong ranges are needed; Neil's short fine-tunes barely differed.
+- **Skill / diversity family:** SMERL- or DIAYN-style latent skills, where a discriminator rewards behaviors that are distinguishable
+  from z, with diversity only rewarded when the task is solved. Targets "competent and distinguishable" directly.
+- **Null-space posture family:** π_z(s) = base(s) + (I − J⁺J)·z in joint space. Different joint actions, same stick-tip motion to first order.
+  Different actions by construction; risk that the base policy is unfamiliar with the shifted arm postures.
+- BC fits as **distillation of each conditioned expert into a z-conditioned BC network** (the run 2 recipe), or classes are defined by behavior family and the training method becomes secondary.
+
+**2. Same answers are fine; evaluate like Garg.** Garg scores prediction error on the query, not recovery of w. With few
+examples many w fit the data, and the best predictor averages over them. For policies:
+- Baselines on the same queries: **no-context / mean policy** (best predictor without context), **oracle** (knows z; the floor),
+  and a **fit-z baseline** that searches for the z that best explains the context and predicts π(s_q, ẑ), the analog of least squares.
+  ICL is shown when the transformer beats the mean policy and approaches fit-z as k grows.
+- Normalize error per query state by how much actions vary across z there, and report it on **informative states**
+  (high variance across z) separately, since near the goal all policies may act alike.
+- Check identifiability first: if the fit-z baseline cannot recover z from k demos, no learner can.
+
+**3. Prove it is not memorizing.**
+- Fresh continuous z per training prompt: effectively no repeats, as in Garg.
+- Test on new z from the same distribution.
+- **Diversity sweep** (Raventós-style): train with finite pools of 16, 256, 4,096 and unlimited z, and test on new z.
+  Memorization shows as good training-pool error but poor new-z error at small pools.
+
+**Data:** with one z per parallel env, 1,024 teachers roll out at once on the GPU, so about 100k episodes take minutes.
+
 ### Open questions for the group
 - **Success metric:** the expert reaches the goal in 98–100% of episodes but stays there in only 65–72%, because ManiSkill's
   PPO ends episodes at first success during training. Proposal: report success-once as the competence measure, for all teacher types.
@@ -193,3 +322,4 @@ short fine-tunes of one parent PPO policy stayed almost identical (contact point
 - **2026-11-22:** Run 1 completed: 19% / 10% test success. Diagnosis recorded above.
 - **2026-11-22:** Run 2: added `collect` (expert rollouts with action noise, and DAgger labeling), multi-file training,
   per-source transition files, and the run 2 notebook. Offline tests extended to 12 (rollout and collection logic use a fake environment).
+- **2026-11-22:** Run 2 completed: 98% / 78% test success (expert 100% / 72%). Results, analysis and proposed next steps recorded above.

@@ -1,7 +1,9 @@
-"""Build notebooks/Train_PushT_State_BC.ipynb from pusht_state_bc.py.
+"""Build notebooks/Train_PushT_State_BC_DAgger.ipynb (run 2) from pusht_state_bc.py.
 
 The notebook embeds the module with %%writefile so it stays self-contained in Colab.
 Edit pusht_state_bc.py or the cell text below, then rerun:  python state_bc/build_notebook.py
+
+Run 1's notebook (notebooks/Train_PushT_State_BC.ipynb) is kept as run; it is no longer rebuilt.
 """
 
 from pathlib import Path
@@ -11,31 +13,34 @@ from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
 HERE = Path(__file__).resolve().parent
 MODULE = (HERE / "pusht_state_bc.py").read_text(encoding="utf-8")
-OUT = HERE.parent / "notebooks" / "Train_PushT_State_BC.ipynb"
+OUT = HERE.parent / "notebooks" / "Train_PushT_State_BC_DAgger.ipynb"
 
 cells = []
 md = lambda s: cells.append(new_markdown_cell(s.strip()))  # noqa: E731
 code = lambda s: cells.append(new_code_cell(s.strip()))  # noqa: E731
 
 md("""
-# Push-T full-state BC teacher
+# Push-T full-state BC teacher, run 2: more expert data + DAgger
 
-Train a **behavioral cloning (BC) teacher** for ManiSkill `PushT-v1` from the released PPO demonstrations.
+Run 1 trained BC on the 761 released demos that replayed and reached **19% success-once / 10% success-at-end**
+on test seeds, versus **100% / 72%** for the released PPO expert. Its training error kept falling while validation
+error stalled, a sign of too little data plus compounding errors. See `state_bc/README.md` for the full log.
+
+This run changes only the **training data**. The teacher architecture, loss, optimizer and evaluation are unchanged.
+1. **More expert data:** roll out the released PPO expert for 8,192 episodes, some with small action noise so the
+   data includes slightly off-course states. Labels are always the expert's clean action.
+2. **DAgger:** let the BC policy drive, label every state it reaches with the expert's action, add to the data,
+   retrain. Four rounds.
 
 | Setting | Value |
 |---|---|
-| Observation | `obs_mode="state"`: joint positions and velocities, stick-tip pose, goal position, T-block pose (numbers only, no images) |
-| Controller | `pd_joint_delta_pos`, shared by all four teacher types |
-| Data | ManiSkill's released PPO demos for `pd_joint_delta_pos` (999 successful episodes), replayed into state observations |
-| Teacher | MLP, two 256-unit ReLU hidden layers, tanh output, MSE loss (as in the proposal) |
-| Simulator | ManiSkill v3.0.1 (commit `a4a4f92`), GPU physics, same install as the camera PPO notebook |
+| Observation / controller | `obs_mode="state"` (31 numbers), `pd_joint_delta_pos` (7 numbers) |
+| Teacher | MLP, 2 × 256 ReLU, tanh output, MSE, Adam 3e-4 with cosine decay, batch 1024, 100k iterations per training |
+| Simulator | ManiSkill v3.0.1 (commit `a4a4f92`), GPU physics |
+| Seeds | collection from 100,000+ (expert) and 200,000+ (DAgger); validation 1001; test 5001 (used once, at the end) |
 
-Select **Runtime → Change runtime type → GPU** (L4 or T4), then run the cells in order. Upload only this notebook.
-
-Outputs go to **Google Drive** under `MyDrive/182_final_project/state_bc/<session>/`:
-the observation contract, the processed dataset, training logs, checkpoints, evaluation JSON and videos.
-
-Checkpoint selection uses **validation seeds** during training. The final number in step 10 uses a separate set of **test seeds** that were never used for selection.
+Select **Runtime → Change runtime type → L4 GPU**, then run the cells in order. Upload only this notebook.
+Outputs go to `MyDrive/182_final_project/state_bc/<session>/`. Expected time: roughly 35–50 minutes, mostly training.
 """)
 
 code("""
@@ -48,24 +53,34 @@ WORK_ROOT = Path("/content/pusht_state_bc")
 WORK_ROOT.mkdir(parents=True, exist_ok=True)
 USE_GOOGLE_DRIVE = True
 DRIVE_SUBDIR = "182_final_project/state_bc"
+RUN_LABEL = "run2_dagger"
 
-# Teacher and training settings
-TEACHER_NAME = "bc_seed0"     # one folder per teacher under runs/
-SEED = 0                      # network init and minibatch sampling
-SPLIT_SEED = 0                # which demo episodes go to validation
+# Teacher training (unchanged from run 1)
+TEACHER_NAME = "bc_dagger_seed0"
+SEED = 0
+SPLIT_SEED = 0
 VAL_FRACTION = 0.1
 ITERS = 100_000
 BATCH_SIZE = 1024
 LR = 3e-4
-EVAL_EVERY = 10_000           # closed-loop validation every N iterations
+EVAL_EVERY = 25_000           # closed-loop validation every N iterations (run 1 used 10,000)
 EVAL_EPISODES = 100
-VAL_SEED = 1001               # validation initial states (checkpoint selection)
-TEST_SEED = 5001              # test initial states (final report only)
+VAL_SEED = 1001
+TEST_SEED = 5001
+
+# New in run 2: data collection
+NUM_ENVS = 1024
+EXPERT_EPISODES = 8192                  # 8 batches of 1024
+EXPERT_NOISE = [0.0, 0.1, 0.2, 0.3]     # action-noise std per batch, cycled; labels stay clean
+EXPERT_SEED_BASE = 100_000
+DAGGER_ROUNDS = 4
+DAGGER_EPISODES = 2048                  # per round
+DAGGER_SEED_BASE = 200_000              # round r uses DAGGER_SEED_BASE + 1000 * r
 
 DEMO_BASE = "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/main/demos/PushT-v1/rl/"
 DEMO_NAME = "trajectory.none.pd_joint_delta_pos.physx_cuda"
 PPO_CKPT_NAME = "ppo_pd_joint_delta_pos_ckpt.pt"
-SESSION = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+SESSION = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_" + RUN_LABEL
 subprocess.run(["nvidia-smi"], check=True)
 print("Notebook Python:", sys.version)
 """)
@@ -108,8 +123,7 @@ def run(command, **kwargs):
 md("""
 ## 2. Install ManiSkill v3.0.1 under Python 3.11
 
-Same pinned install as the camera PPO notebook: a separate Python 3.11 environment with CUDA PyTorch 2.6.0 and SAPIEN 3.0.3,
-so all teachers run identical simulator code. Takes a few minutes the first time in a session.
+Same pinned install as run 1 and the camera PPO notebook. Skips work already done in this Colab session.
 """)
 code("""
 run(["apt-get", "update", "-qq"])
@@ -154,8 +168,8 @@ print("Training Python:", TRAIN_PY)
 md("""
 ## 3. Write the BC module
 
-`pusht_state_bc.py` holds all data, training and evaluation code (`audit`, `prepare`, `train`, `eval`).
-The repo copy lives in `state_bc/`; this notebook is built from it by `state_bc/build_notebook.py`.
+`pusht_state_bc.py` holds all code: `audit`, `prepare`, `collect`, `train`, `eval`.
+The repo copy is `state_bc/pusht_state_bc.py`; this notebook is generated from it by `state_bc/build_notebook.py`.
 """)
 cells.append(new_code_cell("%%writefile /content/pusht_state_bc/pusht_state_bc.py\n" + MODULE.rstrip() + "\n"))
 code("""
@@ -164,25 +178,19 @@ shutil.copy2(BC, OUTPUT_ROOT / BC.name)
 run([TRAIN_PY, BC, "--help"])
 """)
 
-md("""
-## 4. Check the observation and action spaces
-
-Writes `observation_contract.json`: every state field, in order, with its index range, plus action bounds,
-control frequency and episode length. **Share this file with Jimmy**: his state PPO teachers must use the same contract.
-""")
+md("## 4. Check the observation and action spaces\n\nWrites `observation_contract.json` (unchanged from run 1).")
 code("""
 run([TRAIN_PY, BC, "audit", "--out", OUTPUT_ROOT])
 contract = json.loads((OUTPUT_ROOT / "observation_contract.json").read_text())
 assert contract["control_mode"] == "pd_joint_delta_pos" and contract["obs_mode"] == "state"
-print("state_dim", contract["state_dim"], "action_dim", contract["action_dim"])
+assert contract["max_episode_steps"] == 100, contract["max_episode_steps"]
 """)
 
 md("""
-## 5. Download and replay the released PPO demos
+## 5. Released demos and expert checkpoint
 
-The raw file stores actions and simulator states, not observations. ManiSkill's replay tool restores each recorded
-simulator state and records `state` observations (the official IL-baseline recipe, `--use-env-states`).
-Then `prepare` splits **whole episodes** into train/validation and computes normalization from the training split only.
+Same as run 1: download, replay into state observations, split whole episodes 90/10.
+The released demos stay in the training data, and their validation split is used for validation action error.
 """)
 code("""
 DEMO_DIR = WORK_ROOT / "demos/PushT-v1/rl"
@@ -193,122 +201,169 @@ for name in (DEMO_NAME + ".h5", DEMO_NAME + ".json", PPO_CKPT_NAME):
         print("Downloading", name)
         urllib.request.urlretrieve(DEMO_BASE + name, target)
     print(f"{name}: {target.stat().st_size / 1e6:.1f} MB")
+EXPERT = DEMO_DIR / PPO_CKPT_NAME
 
 replayed = DEMO_DIR / "trajectory.state.pd_joint_delta_pos.physx_cuda.h5"
 if not replayed.exists():
     run([TRAIN_PY, "-m", "mani_skill.trajectory.replay_trajectory",
          "--traj-path", DEMO_DIR / (DEMO_NAME + ".h5"), "--use-env-states",
          "-c", "pd_joint_delta_pos", "-o", "state", "--save-traj", "--num-envs", 1024, "-b", "physx_cuda"])
-assert replayed.exists(), sorted(p.name for p in DEMO_DIR.iterdir())
 
 DATA_DIR = OUTPUT_ROOT / "data"
-DATASET = DATA_DIR / "pusht_state_joint_ppo_demos.npz"
-run([TRAIN_PY, BC, "prepare", "--h5", replayed, "--out", DATASET,
+run([TRAIN_PY, BC, "prepare", "--h5", replayed, "--out-dir", DATA_DIR,
      "--val-fraction", VAL_FRACTION, "--split-seed", SPLIT_SEED])
-summary = json.loads(DATASET.with_suffix(".summary.json").read_text())
-assert summary["state_dim"] == contract["state_dim"] and summary["action_dim"] == contract["action_dim"]
+DEMOS_TRAIN, DEMOS_VAL = DATA_DIR / "demos_train.npz", DATA_DIR / "demos_val.npz"
 """)
 
 md("""
-## 6. Sanity check: evaluate the released PPO expert
+## 6. Released PPO expert on validation seeds
 
-This is the teacher that produced the demos. Running it through the same evaluation code checks the
-environment, seeds and success metric, and gives the target a BC teacher should approach.
-If the checkpoint does not load (for example a shape mismatch), the cell reports it and continues.
+Reference point. Run 1 measured **98% success-once / 65% success-at-end** here.
 """)
 code("""
-try:
-    run([TRAIN_PY, BC, "eval", "--checkpoint", DEMO_DIR / PPO_CKPT_NAME, "--released-ppo",
-         "--episodes", EVAL_EPISODES, "--seed", VAL_SEED, "--out", OUTPUT_ROOT / "released_ppo_val_eval.json"])
-except RuntimeError as error:
-    print("Released PPO evaluation failed; BC training does not depend on it.\\n", error)
+run([TRAIN_PY, BC, "eval", "--checkpoint", EXPERT, "--released-ppo", "--episodes", EVAL_EPISODES,
+     "--seed", VAL_SEED, "--out", OUTPUT_ROOT / "released_ppo_val_eval.json"])
 """)
 
 md("""
-## 7. Smoke test
+## 7. Collect more expert data (new)
 
-A short run (2,000 iterations, 16 evaluation episodes) to catch problems before the main job.
-Its outputs go to a separate `smoke/` folder.
+The expert drives 8,192 episodes of 100 steps (about 819k transitions). Batches cycle through action-noise levels
+0, 0.1, 0.2 and 0.3, so some episodes wander off the expert's usual path and record how it corrects.
+Labels are always the expert's noise-free action. The printed success rates show how much noise the expert tolerates.
 """)
 code("""
-run([TRAIN_PY, BC, "train", "--dataset", DATASET, "--out", OUTPUT_ROOT / "smoke",
-     "--seed", SEED, "--iters", 2000, "--log-every", 500, "--eval-every", 1000, "--eval-episodes", 16,
-     "--val-seed", VAL_SEED])
+EXPERT_DATA = DATA_DIR / "expert_rollouts.npz"
+run([TRAIN_PY, BC, "collect", "--expert", EXPERT, "--driver", "expert", "--episodes", EXPERT_EPISODES,
+     "--num-envs", NUM_ENVS, "--noise-std", *EXPERT_NOISE, "--seed-base", EXPERT_SEED_BASE, "--out", EXPERT_DATA])
+""")
+
+md("## 8. Smoke test\n\nShort run on the new data to catch problems before the long jobs.")
+code("""
+run([TRAIN_PY, BC, "train", "--train-data", DEMOS_TRAIN, EXPERT_DATA, "--val-data", DEMOS_VAL,
+     "--out", OUTPUT_ROOT / "smoke", "--seed", SEED, "--iters", 2000, "--log-every", 500,
+     "--eval-every", 1000, "--eval-episodes", 16, "--val-seed", VAL_SEED])
 """)
 
 md("""
-## 8. Train the BC teacher
+## 9. Round 0: train on released demos + expert rollouts
 
-Logs validation action MSE every 1,000 iterations and closed-loop **validation** success every `EVAL_EVERY` iterations.
-`best.pt` is the checkpoint with the highest validation success-at-end (ties broken by success-once).
-Every evaluated checkpoint, `final.pt` and `train_log.csv` are kept. On an L4 this should take minutes, not hours.
+This alone measures how much **more expert data** helps, before any DAgger.
 """)
 code("""
-RUN_DIR = OUTPUT_ROOT / "runs" / TEACHER_NAME
+RUNS = OUTPUT_ROOT / "runs" / TEACHER_NAME
 config = dict(teacher=TEACHER_NAME, seed=SEED, split_seed=SPLIT_SEED, iters=ITERS, batch_size=BATCH_SIZE, lr=LR,
               eval_every=EVAL_EVERY, eval_episodes=EVAL_EPISODES, val_seed=VAL_SEED, test_seed=TEST_SEED,
-              maniskill_commit=MANISKILL_COMMIT, dataset=str(DATASET), architecture="MLP 2x256 ReLU, tanh output")
-RUN_DIR.mkdir(parents=True, exist_ok=False)
-(RUN_DIR / "run_config.json").write_text(json.dumps(config, indent=2))
-run([TRAIN_PY, BC, "train", "--dataset", DATASET, "--out", RUN_DIR, "--seed", SEED, "--iters", ITERS,
-     "--batch-size", BATCH_SIZE, "--lr", LR, "--eval-every", EVAL_EVERY, "--eval-episodes", EVAL_EPISODES,
-     "--val-seed", VAL_SEED])
+              expert_episodes=EXPERT_EPISODES, expert_noise=EXPERT_NOISE, dagger_rounds=DAGGER_ROUNDS,
+              dagger_episodes=DAGGER_EPISODES, maniskill_commit=MANISKILL_COMMIT,
+              architecture="MLP 2x256 ReLU, tanh output", training="from scratch each round on all data so far")
+RUNS.mkdir(parents=True, exist_ok=False)
+(RUNS / "run_config.json").write_text(json.dumps(config, indent=2))
+
+
+def train_round(r, train_files):
+    out = RUNS / f"round{r}"
+    run([TRAIN_PY, BC, "train", "--train-data", *train_files, "--val-data", DEMOS_VAL, "--out", out,
+         "--seed", SEED, "--iters", ITERS, "--batch-size", BATCH_SIZE, "--lr", LR,
+         "--eval-every", EVAL_EVERY, "--eval-episodes", EVAL_EPISODES, "--val-seed", VAL_SEED])
+    return out
+
+
+progress = []
+train_files = [DEMOS_TRAIN, EXPERT_DATA]
+round_dir = train_round(0, train_files)
+best = json.loads((round_dir / "best.json").read_text())
+progress.append(dict(round=0, train_files=len(train_files), val_success_once=best["success_once"],
+                     val_success_at_end=best["success_at_end"], best_iter=best["iter"], on_policy=None))
+(RUNS / "dagger_progress.json").write_text(json.dumps(progress, indent=2))
+print(progress[-1])
 """)
 
-md("## 9. Training curves")
+md("""
+## 10. DAgger rounds (new)
+
+Each round: the latest BC teacher drives 2,048 episodes, the expert labels every state it visits,
+those transitions join the training data, and a fresh BC teacher trains on everything so far.
+`on_policy` is the driving BC policy's own success while collecting, a second view of progress.
+""")
+code("""
+for r in range(1, DAGGER_ROUNDS + 1):
+    previous = RUNS / f"round{r - 1}" / "best.pt"
+    dagger_data = DATA_DIR / f"dagger_round{r}.npz"
+    run([TRAIN_PY, BC, "collect", "--expert", EXPERT, "--driver", "bc", "--driver-checkpoint", previous,
+         "--episodes", DAGGER_EPISODES, "--num-envs", NUM_ENVS, "--seed-base", DAGGER_SEED_BASE + 1000 * r,
+         "--out", dagger_data])
+    collected = json.loads(dagger_data.with_suffix(".json").read_text())
+    train_files.append(dagger_data)
+    round_dir = train_round(r, train_files)
+    best = json.loads((round_dir / "best.json").read_text())
+    progress.append(dict(round=r, train_files=len(train_files), val_success_once=best["success_once"],
+                         val_success_at_end=best["success_at_end"], best_iter=best["iter"],
+                         on_policy=dict(success_once=collected["driver_success_once"],
+                                        success_at_end=collected["driver_success_at_end"])))
+    (RUNS / "dagger_progress.json").write_text(json.dumps(progress, indent=2))
+    print(progress[-1])
+""")
+
+md("## 11. Progress across rounds")
 code("""
 import csv
 import matplotlib.pyplot as plt
 
-rows = list(csv.DictReader((RUN_DIR / "train_log.csv").open()))
-it = [int(r["iter"]) for r in rows]
+print(f"{'round':>5} {'val once':>9} {'val end':>8} {'driver once (collect)':>22}")
+for p in progress:
+    driver = f"{p['on_policy']['success_once']:.0%}" if p["on_policy"] else "-"
+    print(f"{p['round']:>5} {p['val_success_once']:>9.0%} {p['val_success_at_end']:>8.0%} {driver:>22}")
+
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 3.5))
-ax1.plot(it, [float(r["train_mse"]) for r in rows], label="train")
-ax1.plot(it, [float(r["val_mse"]) for r in rows], label="validation")
-ax1.set(xlabel="iteration", ylabel="action MSE", yscale="log", title="Action error")
+rounds = [p["round"] for p in progress]
+ax1.plot(rounds, [p["val_success_once"] for p in progress], "o-", label="success once")
+ax1.plot(rounds, [p["val_success_at_end"] for p in progress], "s-", label="success at end")
+ax1.axhline(0.98, ls="--", c="gray", lw=1, label="PPO expert once (run 1)")
+ax1.set(xlabel="DAgger round", ylabel="validation rate", ylim=(0, 1.02), title="Best checkpoint per round")
 ax1.legend()
-ev = [r for r in rows if r["success_at_end"]]
-ax2.plot([int(r["iter"]) for r in ev], [float(r["success_once"]) for r in ev], "o-", label="success once")
-ax2.plot([int(r["iter"]) for r in ev], [float(r["success_at_end"]) for r in ev], "s-", label="success at end")
-ax2.set(xlabel="iteration", ylabel="rate", ylim=(0, 1.02), title="Closed-loop validation")
+for r in rounds:
+    rows = list(csv.DictReader((RUNS / f"round{r}" / "train_log.csv").open()))
+    ax2.plot([int(x["iter"]) for x in rows], [float(x["val_mse"]) for x in rows], label=f"round {r}")
+ax2.set(xlabel="iteration", ylabel="validation action MSE", yscale="log", title="Action error on held-out demos")
 ax2.legend()
 fig.tight_layout()
-fig.savefig(RUN_DIR / "training_curves.png", dpi=120)
+fig.savefig(RUNS / "dagger_progress.png", dpi=120)
 plt.show()
 """)
 
 md("""
-## 10. Final test on fresh seeds
+## 12. Final test on fresh seeds
 
-Evaluates `best.pt` on `TEST_SEED` initial states, which were not used for checkpoint selection, and the released
-PPO expert on the same states for the teacher-performance gap. Saves a few videos of the BC teacher.
+Picks the round with the best **validation** success (success-at-end, then success-once, later round on ties),
+then evaluates it once on the test seeds next to the PPO expert. Saves a few videos.
 """)
 code("""
-run([TRAIN_PY, BC, "eval", "--checkpoint", RUN_DIR / "best.pt", "--episodes", EVAL_EPISODES,
-     "--seed", TEST_SEED, "--out", RUN_DIR / "test_eval.json"])
-try:
-    run([TRAIN_PY, BC, "eval", "--checkpoint", DEMO_DIR / PPO_CKPT_NAME, "--released-ppo", "--episodes", EVAL_EPISODES,
-         "--seed", TEST_SEED, "--out", OUTPUT_ROOT / "released_ppo_test_eval.json"])
-except RuntimeError as error:
-    print("Released PPO test evaluation failed:\\n", error)
-run([TRAIN_PY, BC, "eval", "--checkpoint", RUN_DIR / "best.pt", "--episodes", 4,
-     "--seed", TEST_SEED, "--video-dir", RUN_DIR / "videos"])
+chosen = max(progress, key=lambda p: (p["val_success_at_end"], p["val_success_once"], p["round"]))
+FINAL = RUNS / f"round{chosen['round']}" / "best.pt"
+shutil.copy2(FINAL, RUNS / "teacher.pt")
+print("Selected round", chosen["round"], FINAL)
 
-result = {"teacher": TEACHER_NAME, "test": json.loads((RUN_DIR / "test_eval.json").read_text())}
-ppo_test = OUTPUT_ROOT / "released_ppo_test_eval.json"
-if ppo_test.exists():
-    result["released_ppo_test"] = json.loads(ppo_test.read_text())
-(RUN_DIR / "summary.json").write_text(json.dumps(result, indent=2))
-print(json.dumps(result, indent=2))
+run([TRAIN_PY, BC, "eval", "--checkpoint", FINAL, "--episodes", EVAL_EPISODES,
+     "--seed", TEST_SEED, "--out", RUNS / "test_eval.json"])
+run([TRAIN_PY, BC, "eval", "--checkpoint", EXPERT, "--released-ppo", "--episodes", EVAL_EPISODES,
+     "--seed", TEST_SEED, "--out", OUTPUT_ROOT / "released_ppo_test_eval.json"])
+run([TRAIN_PY, BC, "eval", "--checkpoint", FINAL, "--episodes", 4, "--seed", TEST_SEED,
+     "--video-dir", RUNS / "videos"])
+
+result = {"teacher": TEACHER_NAME, "selected_round": chosen["round"], "progress": progress,
+          "test": json.loads((RUNS / "test_eval.json").read_text()),
+          "released_ppo_test": json.loads((OUTPUT_ROOT / "released_ppo_test_eval.json").read_text()),
+          "run1_test_for_comparison": {"success_once": 0.19, "success_at_end": 0.10}}
+(RUNS / "summary.json").write_text(json.dumps(result, indent=2))
+print(json.dumps({k: result[k] for k in ("selected_round", "test", "released_ppo_test", "run1_test_for_comparison")}, indent=2))
 print("Everything is saved in", OUTPUT_ROOT)
 """)
 
-md("""
-## 11. Watch a rollout
-""")
+md("## 13. Watch a rollout")
 code("""
 from IPython.display import Video, display
-videos = sorted((RUN_DIR / "videos").glob("*.mp4"))
+videos = sorted((RUNS / "videos").glob("*.mp4"))
 print(len(videos), "videos")
 if videos:
     display(Video(str(videos[0]), embed=True, width=480))

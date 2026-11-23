@@ -12,5 +12,8 @@ empty and wrong-teacher context. Follow with RGB and robot proprioception.
 
 The saved course proposal still describes Gym-PushT.
 
+Full-state BC teachers (Nathan): notebooks, code, and the running log of runs and
+decisions are in [state_bc/README.md](state_bc/README.md).
+
 See [CODEX_CONTEXT.md](CODEX_CONTEXT.md) for the research handoff and a
 starter prompt for new Codex sessions.

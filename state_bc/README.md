@@ -27,7 +27,9 @@ so they can be mixed in one state-based learner.
 
 ## How to run
 
-- **Current notebook (run 4, BC from Jimmy's PPO in the shared `PushTVarGoal-v1`):**
+- **Transformer (v1):** [`notebooks/Train_PushT_ICL_Transformer.ipynb`](../notebooks/Train_PushT_ICL_Transformer.ipynb), built by
+  `build_notebook_icl.py`; code in `pusht_icl.py`; tests `python -m unittest state_bc/test_icl_offline.py` (needs `transformers`).
+- **Teacher notebook (run 4, BC from Jimmy's PPO in the shared `PushTVarGoal-v1`):**
   [`notebooks/Train_PushT_VarGoal_BC_from_Jimmy.ipynb`](../notebooks/Train_PushT_VarGoal_BC_from_Jimmy.ipynb).
   Upload to Colab, choose an L4 GPU, run top to bottom. Outputs go to `MyDrive/182_final_project/state_bc/<session>/`.
 - **Earlier notebooks (kept as run, not rebuilt):** run 1 [`Train_PushT_State_BC.ipynb`](../notebooks/Train_PushT_State_BC.ipynb),
@@ -515,6 +517,104 @@ On validation, BC scored 88 / 81, 93 / 93, 91 / 88 and 90 / 88 (worst 88%). Both
 - The teacher's job is to clear the bar in every quadrant and give clean demos. It does both. Time is better spent on transformer data collection.
 - If the gap ever matters, first evaluate with more episodes (for example 500 per quadrant) to see whether it is real, before changing training.
 
+### Next: the transformer (discussed 2026-11-23)
+Both v1 teachers are frozen and in the same environment: Jimmy's PPO and the run 4 BC. `CODEX_CONTEXT.md`'s first experiment is numerical only
+("a balanced mixture of PPO and BC prompts"); camera teachers are a later extension. So the transformer can start now, and the full-state pair is
+what it needs. No branch has transformer code yet.
+
+**Settle with the group first:**
+1. Who builds and trains the transformer (still open).
+2. The prompt data format, with Jimmy. Proposed: `.npz` with `obs`, `actions`, `episode_ids`, `goal_xy` and `goal_quadrant`, plus a `teacher` field.
+3. The data design:
+   - number of training goals (Q1–Q3), validation goals (Q1–Q3) and Q4 test goals
+   - episodes per goal
+   - support snippet length and how many snippets (`N` ≤ 511 pairs; one 100-step episode is 100 pairs)
+   - whether to truncate demos at first success
+
+**Proposed stages:**
+1. **Prompt data generator** (teacher side, natural next step for this folder). For each sampled goal (fixed through
+   `reset(options=dict(goal_xy=...))` in `PushTVarGoal-v1`) and each teacher, roll out several noise-free episodes from different starts and save
+   them grouped by goal. Support and query come from different episodes; labels are the teacher's actions. Drop `extra/goal_pos` (21:24) only
+   when building prompts, so the teachers still see the goal. Separate goal sets for train (Q1–Q3), validation (Q1–Q3) and test (Q4).
+2. **Transformer training** to the spec (GPT-2, 12 layers, width 256, 8 heads, one token per state or action, query-action MSE), with prompts
+   sampled on the fly from stage 1's data.
+**Time estimate (2026-11-23, rough, not measured; Nathan will train it):**
+- The model is small: about 9.5M parameters.
+- Cost per step depends mostly on prompt length: `N` = 64 pairs is 129 tokens, `N` = 200 is 401 tokens.
+- On an L4 with batch 64, expect roughly 0.03–0.1 s per step. That makes 100k steps about 1–3 hours. Garg's 500k steps would be about 5–14 hours,
+  too long for one Colab session, so checkpoint to Drive and support resuming.
+- Prompt data: about 10 minutes, scaled from run 4's collection speed.
+- Closed-loop evaluation: about 15–30 minutes for all conditions.
+- Plan: a 30-minute pilot first, checking that correct-goal context beats wrong-goal context; then about 100k steps. First full pass: about 2–4 hours
+  of GPU time. Measure steps per second in the pilot before committing to a longer run.
+
+3. **Frozen closed-loop evaluation:** unseen Q1–Q3 goals and Q4 goals; correct-goal, wrong-goal and no context; context-size sweep. Plus the
+   baseline from `CODEX_CONTEXT.md`: goal-conditioned BC trained on Q1–Q3 data only, given the goal estimated from a demo's final T pose.
+
+### Transformer v1: built (2026-11-23, not yet run)
+Nathan trains it. Notebook [`notebooks/Train_PushT_ICL_Transformer.ipynb`](../notebooks/Train_PushT_ICL_Transformer.ipynb), built by
+`state_bc/build_notebook_icl.py`; code in [`pusht_icl.py`](pusht_icl.py), with subcommands `collect`, `train`, `offline` and `eval`.
+
+**What it is trained on:**
+- **Teachers:** the two frozen full-state teachers in `PushTVarGoal-v1`, Jimmy's PPO and the run 4 BC, read from the run 4 Drive folder. Half
+  the prompts come from each.
+- **Demonstrations:** noise-free; 10 episodes per goal and teacher, from different starts, with the same goals for both teachers.
+
+| Split | Goals | Quadrants | Use |
+|---|---|---|---|
+| `train` | 2,048 | Q1–Q3 | training prompts |
+| `val` | 128 | Q1–Q3, unseen | checkpoint selection |
+| `test_in` | 128 | Q1–Q3, unseen | final test |
+| `test_q4` | 128 | Q4 | final test, held-out quadrant |
+
+- **One prompt:** one teacher and one goal. It holds `k` ∈ {0, 1, 2, 4, 8} whole demonstration episodes (the same `k` within a batch, chosen at
+  random per batch). Each episode is subsampled every 4th step and always includes the final step, so the final T pose is in the context: 25 pairs
+  per episode, at most 200 pairs (401 tokens). Then one **query state from a different episode** of the same teacher and goal. The target is the
+  teacher's action there. Successful demonstrations are used first.
+- **The goal is hidden:** fields 21:24 are removed from every state the transformer sees (28 numbers instead of 31). Teachers still see the
+  goal when generating data. Robot state and T pose stay.
+- **Model, to `PushT_ICL_Transformer_Spec.md`:** Hugging Face `GPT2Model`, 12 layers, width 256, 8 heads, `gelu_new`, no dropout, learned
+  positions, 1,024 positions; one linear projection per state or action token and a linear action head; 9.75M parameters, random init.
+  States are normalized with training statistics.
+- **Training:** query-action MSE, AdamW 1e-4 (1,000-step warmup, cosine to 10%), batch 64, gradient clip 1.0, bf16 autocast,
+  100k steps.
+- **Validation:** every 2,500 steps, validation action MSE per `k`, with correct-goal vs wrong-goal demonstrations on identical queries.
+  `best.pt` has the lowest mean correct-goal (or no-context) error.
+- **Resuming:** `last.pt` holds model, optimizer and sampler state, in a fixed Drive folder (`icl_runs/transformer_v1_seed0/`), so rerunning the
+  notebook continues an interrupted run.
+
+**Evaluation (frozen weights, unseen goals):**
+- **Action error:** teacher-forced, per `k`, correct vs wrong goal, on `val`, `test_in` and `test_q4`.
+- **Closed loop:** 128 goals × 4 new starts per split, demonstrations from PPO or BC, `k` ∈ {0, 1, 2, 4, 8}, correct-goal vs wrong-goal (the
+  demonstrations of another goal from the same split and teacher), no context at `k = 0`. All conditions share the same starts (same seeds and
+  goals). The two teachers, which see the goal, run on those starts too as the reference.
+- Not included yet: the goal-estimate baseline (BC trained on Q1–Q3 data, given the goal from a demonstration's final T pose).
+
+**Pilot first:** 3,000 steps, then the action-error gap between correct-goal and wrong-goal demonstrations on validation goals, plus a small
+closed-loop check. Training prints it/s and an ETA, so the pilot measures the real speed.
+
+**Changes elsewhere:** `pusht_state_bc.rollout` accepts `reset_options` (to fix goals) and, when labeling, returns each episode's first-success
+step and success-at-end.
+
+**Offline tests:** `test_icl_offline.py`, 13 tests. They cover:
+- the goal is hidden
+- snippets end at the final step
+- prompts come from one teacher and one goal, with the query from a different episode
+- wrong-goal prompts keep identical queries
+- successful demonstrations come first
+- model shapes, save/load, and that the actor ignores the goal fields
+- a tiny model trained on CPU learns to use the context (correct-goal error below half of wrong-goal and no-context error)
+- resuming
+- `collect` groups episodes by goal
+
+All 41 tests in both files pass. Not yet run on a GPU.
+
+**Design choices to revisit after the pilot:**
+- Whole subsampled episodes as snippets, rather than truncating at first success.
+- One query per prompt, as in the spec, rather than predicting at every state token (more data per step).
+- 2,048 training goals.
+- The stride of 4.
+
 ### Pre-run assessment (2026-11-23, before running)
 The overall design is sound: the hidden goal forces context use, and Q4 goals test generalization. Risks, most likely first:
 1. **PPO may not reach 80% in 50M transitions.** The task is now harder (moving goals and varied tip starts), and the fixed-goal
@@ -757,3 +857,6 @@ examples many w fit the data, and the best predictor averages over them. For pol
   environments, the `eval-quadrants` subcommand. Offline tests: 28.
 - **2026-11-23:** Run 4 completed in about 14 minutes. Jimmy's teacher reproduced within 3 points of his numbers. BC test success-once / at-end per
   quadrant: Q1 92 / 90, Q2 94 / 93, Q3 89 / 84, Q4 91 / 88. Both teachers pass the 80% bar in every quadrant. Results recorded above.
+- **2026-11-23:** Transformer v1 built: `pusht_icl.py` (`collect`, `train`, `offline`, `eval`), `build_notebook_icl.py`,
+  `Train_PushT_ICL_Transformer.ipynb`, `test_icl_offline.py` (13 tests). `rollout` gained `reset_options` and per-episode success records.
+  Offline tests: 41 in total.

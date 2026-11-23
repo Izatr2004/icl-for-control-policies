@@ -247,14 +247,16 @@ def load_released_ppo(path, state_dim, action_dim, device="cpu"):
 # --------------------------------------------------------------------------------------
 
 @torch.no_grad()
-def rollout(env, max_steps, driver, seed, labeler=None, noise_std=0.0, generator=None):
+def rollout(env, max_steps, driver, seed, labeler=None, noise_std=0.0, generator=None, reset_options=None):
     """Run one batch of episodes, one per parallel env, for max_steps with no resets.
 
     driver picks the executed action; Gaussian noise (std on the [-1, 1] action scale) is
     added after labeling, so labels stay the labeler's clean actions. If labeler is given,
-    returns obs [n, T, d_s] and labels [n, T, d_a] on the CPU, episode-major.
+    returns obs [n, T, d_s] and labels [n, T, d_a] on the CPU, episode-major, and per-episode
+    records (including first_success_step, -1 if never, and success_at_end).
+    reset_options go to env.reset, e.g. dict(goal_xy=...) to fix PushTVarGoal-v1's goals.
     """
-    obs, _ = env.reset(seed=seed)
+    obs, _ = env.reset(seed=seed) if reset_options is None else env.reset(seed=seed, options=reset_options)
     n = obs.shape[0]
     device = obs.device
     base = getattr(env, "base_env", None)
@@ -300,6 +302,8 @@ def rollout(env, max_steps, driver, seed, labeler=None, noise_std=0.0, generator
     if "tip_ik_fallback" in records:
         result["tip_ik_fallback_rate"] = records["tip_ik_fallback"].float().mean().item()
     if labeler is not None:
+        records["first_success_step"] = first_success
+        records["success_at_end"] = success
         for name, value in records.items():
             result[f"{name}_per_episode"] = value.cpu().tolist()
     if labeler is None:

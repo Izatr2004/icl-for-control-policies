@@ -317,7 +317,7 @@ weights is not enough; PushT-v1's released expert itself comes from ManiSkill's 
 A bug in the new environment is less likely: `check-env` passed (success check follows each goal; tip placement matches the simulator).
 Not yet ruled out: an episode length of 100 steps being too short for far starts, and the reward shaping not guiding the stick to distant T positions.
 
-### Run 3b plan: warm-started PPO (built 2026-11-23, not yet run)
+### Run 3b plan: warm-started PPO (built 2026-11-23; ran the same day, results below)
 Same notebook (`Train_PushT_VariableGoal_PPO_BC.ipynb`, rebuilt), session label `run3b_warmstart`. Only the PPO step changes:
 
 | Setting | Run 3 | Run 3b | Why |
@@ -334,6 +334,66 @@ fixed tip starts to see which change made run 3 hard; worth adding if 3b also st
 **Expected time (estimate, not measured):** install about 8 minutes; checks and the baseline evaluation a few minutes; PPO 35–90 minutes depending on
 speed with 4,096 environments (run 3 managed 8,000–10,000 SPS with 1,024); expert selection, data collection, BC training and testing about 20–25 minutes.
 Roughly **1¼ to 2 hours** in total.
+
+### Run 3b result: both variable-goal teachers work (2026-11-23)
+**Drive session:** `state_bc/20261123T213152Z_run3b_warmstart`. The whole notebook took about **65 minutes**, from session start at 21:32 UTC
+to the summary at 22:37 UTC, below the estimate. Results were read straight from the Drive files (`summary.json`,
+`released_expert_on_variable_goal.json`, `env_check.json`, `notebook.log`).
+
+**`check-env`** passed:
+- tip placement: no fallbacks, all 64 × 64 grid cells reachable, tip vs IK gap at most 0.01 mm
+- closest tip start to the T: 15.07 cm
+- stand-in T: overlap at least 0.948 on the goal, at most 0.339 when shifted 5 cm (threshold 0.9)
+- goal quadrant and tip-start quadrant agree 23% of the time, close to the 25% expected if they are independent
+
+**Released fixed-goal expert on moving goals, before fine-tuning:** 1% / 0.5% success-once / at-end (200 validation episodes; Q1 0%, Q2 0%, Q3 2%, Q4 2%).
+It knows how to push, but not to a moving goal from a moving tip start, so the warm start began from essentially zero success.
+
+**PPO speed and progress:**
+- **Speed:** 4,096 environments ran at about **17,500 SPS** (16,500–18,500), about twice run 3's rate, so 50M transitions took about 48 minutes.
+- **Progress:** ppo.py's 16-episode evaluations, success-once:
+
+| Transitions | 0 | 1.6M–19.7M | 21.3M | 22.9M | 24.6M | 27.9M | 31.1M | 32.8M | 34.4M–49.2M |
+|---|---|---|---|---|---|---|---|---|---|
+| eval_success_once | 0 | 0–6% | 19% | 31% | 50% | 81% | 88% | 100% | 88–100% |
+
+**Reading:** nothing happened for the first 20M transitions, then success-once rose from 0 to about 100% within about 12M. The risk named in the pre-run
+assessment (near zero at 20–25M) was only just avoided. **Run 3b changed two things at once** (warm start and 4,096 environments), so this result
+does not show which one mattered. The baseline of 1% suggests the larger batch or the transferred pushing skill helped only after a long search,
+not that the expert already solved the task.
+
+**Expert selection** (last five checkpoints, 200 validation episodes, seed 1001, success-once / success-at-end):
+
+| Checkpoint | Overall | Q1 | Q2 | Q3 | Q4 |
+|---|---|---|---|---|---|
+| ckpt_676 | 98.5% / 28.5% | 98% / 33% | 98% / 22% | 100% / 35% | 98% / 20% |
+| ckpt_701 | 98.5% / 28.5% | 95% / 18% | 100% / 27% | 100% / 37% | 100% / 33% |
+| ckpt_726 | 99% / 39% | 96% / 40% | 100% / 44% | 100% / 28% | 100% / 47% |
+| ckpt_751 | 97% / 24% | 96% / 21% | 98% / 24% | 98% / 37% | 96% / 11% |
+| **final_ckpt** (selected) | **99.5% / 28.5%** | 100% / 32% | 98% / 24% | 100% / 32% | 100% / 24% |
+
+**Expert data:** 16,384 episodes (1.64M transitions), with action noise 0 / 0.1 / 0.2 / 0.3 giving driver success-once of about 98% / 97.5% / 87.5% / 52%
+(83.7% overall). Labels are always the expert's noise-free action.
+
+**BC teacher:** best validation checkpoint in 5.7 minutes of training, at 97.5% / 34% on validation. Its validation MSE was still falling slowly at 145k iterations.
+
+**Test** (200 episodes, seed 5001, never used for selection):
+
+| Teacher | Overall | Q1 | Q2 | Q3 | Q4 | Steps to first success |
+|---|---|---|---|---|---|---|
+| PPO expert (`teachers/ppo_expert.pt`) | **98.5% / 29%** | 100% / 36% | 96% / 22% | 100% / 33% | 98% / 22% | 40.8 |
+| BC teacher (`teachers/bc_teacher.pt`) | **99% / 33.5%** | 96% / 44% | 100% / 43% | 100% / 25% | 100% / 20% | 42.3 |
+
+(Q1–Q4 have 45–55 test episodes each.)
+
+**Conclusions:**
+- **Both goal-conditioned full-state teachers are usable.** Success-once is at least 96% in every goal quadrant, including Q4, the transformer's OOD test quadrant.
+  BC matches its expert, as in run 2, again without DAgger.
+- **Success-at-end is low (about 30%, vs the fixed-goal expert's 72%).** The policies reach the goal in about 40 of 100 steps, then often push the T off it.
+  This is likely because ManiSkill's PPO counts an episode as done at first success during training, so the policy is never rewarded for staying on the goal.
+  This matters for transformer data. A demo's final T pose is a less reliable hint of the hidden goal than first-success, so **truncating demos at first success** (or
+  recording the first-success step) looks worthwhile. Success-once should be the competence measure, as proposed earlier.
+- **PPO and BC teachers behave almost alike,** so this pair adds little teacher variety by itself; goal variety does the work.
 
 ### Pre-run assessment (2026-11-23, before running)
 The overall design is sound: the hidden goal forces context use, and Q4 goals test generalization. Risks, most likely first:
@@ -401,6 +461,8 @@ pushing strategy changes with the target angle (which way and how far to turn th
 | 2026-11-23 | No DAgger for the variable-goal BC teacher | Run 2 showed it added nothing measurable |
 | 2026-11-23 | Randomize the stick-tip start (±15 cm, by quadrant, independent of the goal) | `CODEX_CONTEXT.md` puts starts in Q1–Q4; also enables start hold-outs. Not an anti-cheating measure: the hidden goal is. |
 | 2026-11-23 | Run 3b: warm-start PPO from the released fixed-goal expert, 4,096 envs, learning rate 1e-4 | Run 3's from-scratch PPO stalled at 4–11%; Jimmy's PPO status unknown, so train now rather than wait |
+| 2026-11-23 | **Accept run 3b's teachers as the variable-goal full-state teachers** (`teachers/ppo_expert.pt`, `teachers/bc_teacher.pt` in session `20261123T213152Z_run3b_warmstart`) | Test success-once 98.5% (PPO) and 99% (BC), at least 96% in every quadrant including Q4 |
+| 2026-11-23 | Use success-once as the competence measure; consider truncating transformer demos at first success | Run 3b teachers reach the goal reliably but end on it only about 30% of the time |
 
 ## v1 plan: variable-goal Push-T (from `CODEX_CONTEXT.md`, 2026-11-23)
 
@@ -565,3 +627,6 @@ examples many w fit the data, and the best predictor averages over them. For pol
   with `ppo_fast.py`), which also changes PPO's batch size, so it is a training change, not just a speed change.
 - **2026-11-23:** Run 3 PPO stalled at 4–11% success after 50M transitions (80% gate stopped before BC). Notebook updated for run 3b: warm start
   from the released expert, 4,096 envs, learning rate 1e-4, and a baseline evaluation of the released expert on moving goals.
+- **2026-11-23:** Run 3b completed in about 65 minutes. The released expert scored 1% on moving goals before fine-tuning; PPO ran at about 17,500 SPS,
+  stayed near zero for 20M transitions, then reached about 100%. Test success-once / at-end: PPO expert 98.5% / 29%, BC teacher 99% / 33.5%, every quadrant at least 96%.
+  Results recorded above.

@@ -8,16 +8,20 @@ Changes from PushT-v1 (ManiSkill v3.0.1):
 - Success check: uses a per-environment goal transform. PushT-v1 computes one fixed transform at load
   time, which would score every episode against the original goal.
 - Stick-tip start: sampled within +-TIP_HALF_WIDTH of the centre, in a quadrant allowed by
-  `start_quadrants` (default all four), at least TIP_CLEARANCE from the movable T's centre. The arm is
-  placed there by damped-least-squares inverse kinematics on the GPU, keeping PushT-v1's rest height
-  and stick orientation. If IK misses by more than IK_TOLERANCE, that episode keeps PushT-v1's start.
+  `start_quadrants` (default all four), at least TIP_CLEARANCE from the movable T's centre. Joint
+  angles come from a lookup table: inverse kinematics (damped least squares, on the GPU) is solved once
+  per process for a TIP_GRID x TIP_GRID grid of cell centres covering the square, at PushT-v1's rest tip
+  height and stick orientation. Each reset uses the cell containing the sampled point, so the tip starts
+  within half a cell diagonal (about 3 mm) of it, and resets cost no IK. Cells the solver cannot reach
+  within IK_TOLERANCE are avoided; if an episode has no usable cell, it keeps PushT-v1's start.
   `random_tip_start=False` restores PushT-v1's fixed tip start.
 - Movable T: PushT-v1's original absolute spawn region and random rotation (unchanged).
 - Starts are sampled independently of the goal, so a start never reveals the goal.
 - Observations are unchanged: state mode still includes `extra/goal_pos`, which now varies.
 
 Per-episode records on the env: goal_xy, goal_quadrant, tip_start_xy, tip_start_quadrant,
-tee_start_quadrant, tip_ik_error, tip_ik_fallback.
+tee_start_quadrant, tip_ik_error, tip_ik_fallback. The lookup table's reachable fraction is in
+env._ik["valid_fraction"] after the first reset.
 
 Importing this module registers the environment.
 """
@@ -30,7 +34,8 @@ GOAL_HALF_WIDTH = 0.10   # metres; goals within +-10 cm of the centre in x and y
 TIP_HALF_WIDTH = 0.15    # metres; stick-tip starts within +-15 cm of the centre in x and y
 TIP_CLEARANCE = 0.15     # metres from the T's centre of mass; the T reaches about 0.14 m from it
 TIP_CANDIDATES = 32      # rejection-sampling candidates per episode
-IK_ITERATIONS = 60
+TIP_GRID = 64            # lookup table resolution per axis (cells of about 4.7 mm)
+IK_ITERATIONS = 200      # one-time solve for the lookup table
 IK_TOLERANCE = 0.01      # metres; larger position error falls back to PushT-v1's start
 ROBOT_BASE_XYZ = (-0.615, 0.0, 0.0)  # PushT-v1 places the robot base here, unrotated
 QUADRANT_SIGNS = {1: (1.0, 1.0), 2: (-1.0, 1.0), 3: (-1.0, -1.0), 4: (1.0, -1.0)}
@@ -55,21 +60,39 @@ def sample_goal_offsets(n, quadrants, half_width=GOAL_HALF_WIDTH, generator=None
     return signs * mags, pick
 
 
-def sample_tip_offsets(tee_offset_xy, quadrants, half_width=TIP_HALF_WIDTH, clearance=TIP_CLEARANCE,
-                       candidates=TIP_CANDIDATES, generator=None):
-    """Tip offsets from the centre [n, 2] in an allowed quadrant, at least `clearance` from the T.
+def tip_grid_offsets(half_width=TIP_HALF_WIDTH, n=TIP_GRID, device=None):
+    """Cell centres [n*n, 2] of an n x n grid over [-half_width, half_width]^2; index = iy * n + ix.
+    No centre lies on an axis, so a cell's quadrant equals the quadrant of any point inside it."""
+    centres = (torch.arange(n, device=device, dtype=torch.float32) + 0.5) * (2 * half_width / n) - half_width
+    gy, gx = torch.meshgrid(centres, centres, indexing="ij")
+    return torch.stack([gx.reshape(-1), gy.reshape(-1)], dim=1)
 
-    Draws `candidates` points per episode and keeps the first that clears the T; if none does,
-    keeps the candidate farthest from it. Returns offsets, quadrants and the clearance achieved.
-    """
-    n, device = tee_offset_xy.shape[0], tee_offset_xy.device
-    offs, quads = sample_goal_offsets(n * candidates, quadrants, half_width, generator, device)
-    offs, quads = offs.view(n, candidates, 2), quads.view(n, candidates)
-    dist = torch.linalg.norm(offs - tee_offset_xy.unsqueeze(1), dim=-1)
-    ok = dist >= clearance
-    first_ok = torch.where(ok.any(1), ok.float().argmax(1), dist.argmax(1))
-    rows = torch.arange(n, device=device)
-    return offs[rows, first_ok], quads[rows, first_ok], dist[rows, first_ok]
+
+def grid_index(offsets_xy, half_width=TIP_HALF_WIDTH, n=TIP_GRID):
+    """Index of the grid cell containing each offset [m, 2]."""
+    cell = 2 * half_width / n
+    ix = ((offsets_xy[:, 0] + half_width) / cell).floor().long().clamp(0, n - 1)
+    iy = ((offsets_xy[:, 1] + half_width) / cell).floor().long().clamp(0, n - 1)
+    return iy * n + ix
+
+
+def choose_tip_cells(tee_offset_xy, quadrants, valid, grid_offsets, half_width=TIP_HALF_WIDTH, n=TIP_GRID,
+                     clearance=TIP_CLEARANCE, candidates=TIP_CANDIDATES, generator=None):
+    """Pick a start cell per episode: sample points uniformly in an allowed quadrant, map each to its
+    cell, keep the first cell that is reachable (valid) and at least `clearance` from the T. If none
+    qualifies, keep the reachable candidate farthest from the T, else the farthest candidate.
+    Returns cell indices and their distance to the T."""
+    m, device = tee_offset_xy.shape[0], tee_offset_xy.device
+    offs, _ = sample_goal_offsets(m * candidates, quadrants, half_width, generator, device)
+    idx = grid_index(offs, half_width, n).view(m, candidates)
+    dist = torch.linalg.norm(grid_offsets[idx] - tee_offset_xy.unsqueeze(1), dim=-1)
+    reachable = valid[idx]
+    ok = reachable & (dist >= clearance)
+    fallback = torch.where(reachable.any(1), torch.where(reachable, dist, torch.full_like(dist, -1.0)).argmax(1),
+                           dist.argmax(1))
+    choice = torch.where(ok.any(1), ok.float().argmax(1), fallback)
+    rows = torch.arange(m, device=device)
+    return idx[rows, choice], dist[rows, choice]
 
 
 def orientation_error(r_current, r_target):
@@ -147,25 +170,12 @@ def _register():
             self._ik = None
 
         def _setup_ik(self):
-            """Kinematic chain from the robot base to the stick tip, and the rest tip pose (base frame)."""
-            import pytorch_kinematics as pk
-
-            with open(self.agent.urdf_path, "rb") as f:
-                chain = pk.build_serial_chain_from_urdf(f.read(), end_link_name=self.agent.ee_link_name)
-            chain = chain.to(device=self.device, dtype=torch.float32)
-            lim = torch.as_tensor(chain.get_joint_limits(), dtype=torch.float32, device=self.device)
-            rest = torch.as_tensor(self.agent.keyframes["rest"].qpos, dtype=torch.float32, device=self.device)
-            joints = chain.get_joint_parameter_names()
-            assert len(joints) == rest.numel(), (joints, rest.numel())
-
-            def fk(q):
-                m = chain.forward_kinematics(q).get_matrix()
-                return m[:, :3, 3], m[:, :3, :3]
-
-            rest_pos, rest_rot = fk(rest.unsqueeze(0))
-            self._ik = dict(fk=fk, jacobian=lambda q: chain.jacobian(q), lower=lim[0], upper=lim[1],
-                            rest=rest, rest_pos=rest_pos[0], rest_rot=rest_rot[0],
-                            base=torch.tensor(ROBOT_BASE_XYZ, device=self.device))
+            """Kinematic chain and the start lookup table, built once per process and device."""
+            center = tuple(float(x) for x in self.goal_offset)
+            key = (str(self.device), center, TIP_HALF_WIDTH, TIP_GRID)
+            if key not in _IK_TABLES:
+                _IK_TABLES[key] = _build_ik_table(self.agent, self.device, torch.tensor(center, device=self.device))
+            self._ik = _IK_TABLES[key]
 
         def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
             with torch.device(self.device):
@@ -216,26 +226,53 @@ def _register():
                 self._setup_ik()
             ik = self._ik
             b = len(env_idx)
-            tip_off, tip_quad, _ = sample_tip_offsets(tee_offset_xy, self.start_quadrants)
-            tip_world = center + tip_off
-            target_pos = torch.zeros((b, 3))
-            target_pos[:, :2] = tip_world - ik["base"][:2]
-            target_pos[:, 2] = ik["rest_pos"][2]
-            target_rot = ik["rest_rot"].expand(b, 3, 3)
-            # Initial guess: the rest posture, with the base joint turned toward the target.
-            rest = ik["rest"].expand(b, -1)
-            q0 = initial_guess(rest, ik["rest_pos"], target_pos, ik["lower"], ik["upper"])
-            q, err = dls_ik(ik["fk"], ik["jacobian"], q0, target_pos, target_rot, ik["lower"], ik["upper"])
-            fallback = err > IK_TOLERANCE
-            q = torch.where(fallback.unsqueeze(1), rest, q)  # PushT-v1's start if IK misses
+            cell, _ = choose_tip_cells(tee_offset_xy, self.start_quadrants, ik["valid"], ik["grid"])
+            fallback = ~ik["valid"][cell]
+            # PushT-v1's rest posture if no reachable cell was found for an episode.
+            q = torch.where(fallback.unsqueeze(1), ik["rest"].expand(b, -1), ik["q"][cell])
             self.agent.reset(q)
-            actual_world = ik["fk"](q)[0][:, :2] + ik["base"][:2]
-            self.tip_start_xy[env_idx] = actual_world
-            self.tip_start_quadrant[env_idx] = torch.where(fallback, quadrant_of(actual_world - center), tip_quad)
-            self.tip_ik_error[env_idx] = torch.where(fallback, torch.zeros_like(err), err)
+            tip = torch.where(fallback.unsqueeze(1), ik["rest_tip_xy"].expand(b, 2), ik["tip_xy"][cell])
+            self.tip_start_xy[env_idx] = tip
+            self.tip_start_quadrant[env_idx] = quadrant_of(tip - center)
+            self.tip_ik_error[env_idx] = torch.where(fallback, torch.zeros(b, device=tip.device), ik["error"][cell])
             self.tip_ik_fallback[env_idx] = fallback
 
     return PushTVariableGoalEnv
+
+
+_IK_TABLES = {}
+
+
+def _build_ik_table(agent, device, center):
+    """Solve IK once for every grid cell centre. Returns joint angles, achieved tip positions (world xy),
+    position errors and a reachability mask, plus PushT-v1's rest posture and tip."""
+    import pytorch_kinematics as pk
+
+    with open(agent.urdf_path, "rb") as f:
+        chain = pk.build_serial_chain_from_urdf(f.read(), end_link_name=agent.ee_link_name)
+    chain = chain.to(device=device, dtype=torch.float32)
+    lim = torch.as_tensor(chain.get_joint_limits(), dtype=torch.float32, device=device)
+    rest = torch.as_tensor(agent.keyframes["rest"].qpos, dtype=torch.float32, device=device)
+    joints = chain.get_joint_parameter_names()
+    assert len(joints) == rest.numel(), (joints, rest.numel())
+    base = torch.tensor(ROBOT_BASE_XYZ, device=device)
+
+    def fk(q):
+        m = chain.forward_kinematics(q).get_matrix()
+        return m[:, :3, 3], m[:, :3, :3]
+
+    rest_pos, rest_rot = fk(rest.unsqueeze(0))
+    grid = tip_grid_offsets(TIP_HALF_WIDTH, TIP_GRID, device)
+    k = grid.shape[0]
+    target_pos = torch.zeros((k, 3), device=device)
+    target_pos[:, :2] = center + grid - base[:2]
+    target_pos[:, 2] = rest_pos[0, 2]
+    q0 = initial_guess(rest.expand(k, -1), rest_pos[0], target_pos, lim[0], lim[1])
+    q, err = dls_ik(fk, lambda q: chain.jacobian(q), q0, target_pos, rest_rot.expand(k, 3, 3), lim[0], lim[1])
+    tip_xy = fk(q)[0][:, :2] + base[:2]
+    valid = err <= IK_TOLERANCE
+    return dict(grid=grid, q=q, tip_xy=tip_xy, error=err, valid=valid, rest=rest,
+                rest_tip_xy=rest_pos[0, :2] + base[:2], valid_fraction=valid.float().mean().item())
 
 
 def _check_quadrants(quadrants, name):

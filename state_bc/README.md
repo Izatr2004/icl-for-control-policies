@@ -263,6 +263,12 @@ before running:
   already uses for its end-effector controllers. Target: the sampled point at PushT-v1's rest tip height, with the rest stick orientation.
   Initial guess: the rest posture with the base joint turned toward the target. Joint limits enforced.
 - **Fallback:** if inverse kinematics misses by more than 1 cm, that episode uses PushT-v1's rest posture, and is flagged.
+- **Speed fix: lookup table (2026-11-23).** The first launch of run 3 trained PPO at only about **6,700 SPS** (about 2 hours for 50M
+  transitions). Likely cause: during PPO training, some of the 1,024 environments reset on nearly every step, and each reset ran
+  60 IK iterations. Not confirmed by a controlled comparison. That run was stopped. Now IK is solved **once per process** for a 64 × 64 grid
+  of cell centres covering the ±15 cm square (200 iterations, one GPU batch). Each reset samples a point as before, uses the joint angles of the
+  cell containing it (tip within about 3 mm of the sampled point; the actual tip position is recorded), and skips cells the solver could not reach.
+  `check-env` reports the reachable fraction of the grid.
 - **Records per episode:** `tip_start_xy`, `tip_start_quadrant`, `tee_start_quadrant`, `tip_ik_error`, `tip_ik_fallback`. Collected data
   saves these with the goal records, so start hold-outs and the 2 × 2 test grid can be built from it later.
 - `random_tip_start=False` restores PushT-v1's tip start.
@@ -287,6 +293,47 @@ makes teachers robust to varied starts, and enables start hold-outs.
 - PPO's own `eval_success_once_mean` should climb; if it stays low, 50M transitions may not be enough for variable goals.
 - Per-quadrant success of the expert and BC teacher: any weak quadrant matters, especially Q4, since the transformer will be tested there.
 - BC vs expert gap, as in run 2.
+
+### Pre-run assessment (2026-11-23, before running)
+The overall design is sound: the hidden goal forces context use, and Q4 goals test generalization. Risks, most likely first:
+1. **PPO may not reach 80% in 50M transitions.** The task is now harder (moving goals and varied tip starts), and the fixed-goal
+   camera PPO needed about 10M transitions before any success. If `eval_success_once_mean` is still near zero around 20–25M,
+   expect to need about 100M or more, or a staged start (fixed tip first). The notebook's 80% gate stops before BC if so.
+2. **First contact with real kinematics.** The inverse-kinematics code assumes the chain's root sits at the robot base (−0.615, 0, 0)
+   and uses `pytorch_kinematics` calls not exercised offline. A mistake shows up immediately in `check-env` (crash, large tip gap,
+   or high fallback rate), so it costs minutes, not a PPO run.
+3. **100-step episodes** may be tight when the tip starts far from the T and the goal is far from the T. Watch steps-to-success.
+4. **Corners of the ±15 cm tip square may be unreachable** with a downward stick; that shows up as fallbacks in `check-env`.
+
+Research-level points to keep in mind:
+- **Goal inference may be easy.** With a fixed goal rotation, the final T pose in a successful demo nearly is the goal. The transformer
+  can succeed by reading it, so the explicit "estimate goal from final T pose" baseline may match it. That still counts as ICL.
+  But the expert's success-at-end is only about 70%, so roughly 30% of demos end with the T pushed back off the goal; truncating demos at
+  first success, or filtering, would make the context cleaner.
+- **Q4 is closer to recombination than extrapolation.** Q4 goals have +x offsets (seen in Q1) and −y offsets (seen in Q3), and all goals
+  lie within a 20 cm square, smaller than the T itself. This is a mild OOD test; describe it that way, or widen the goal square later.
+- **PPO and distilled BC behave almost alike,** so the "balanced mixture of PPO and BC prompts" adds little teacher variety. Goal variety does the work.
+
+### Idea: also vary the goal T's orientation (discussed 2026-11-23, deferred)
+The movable T's *start* rotation is already random; only the *goal* rotation is fixed. Varying it would make the hidden goal
+richer (x, y and angle), give more task variety, and allow an orientation hold-out. Reasons to wait:
+- `CODEX_CONTEXT.md` fixes target orientation for the first numerical experiment.
+- PPO reaching the goal reliably is already the main risk; rotating the T into arbitrary angles is much harder and may not fit in 100 steps.
+- Code changes needed: the dense reward's rotation term uses the fixed `goal_z_rot` (must become per-episode), and the goal pose and
+  success transform must carry each episode's rotation.
+- It would not make goal inference harder in principle: the final T pose in a successful demo still reveals the whole goal.
+
+Suggested path: run v1 with fixed rotation; if PPO handles moving goals comfortably, add a rotation range (for example ±45° first,
+widening later) as a v2 axis, possibly with its own hold-out range.
+
+**As an OOD hold-out axis** (follow-up, 2026-11-23): a good test, plausibly stronger than the Q4 position hold-out, because the
+pushing strategy changes with the target angle (which way and how far to turn the T), not just where to push.
+- **Gap vs beyond:** on a full circle, a held-out arc (say 270°–360°) sits between seen angles on both sides, so it is a gap in coverage.
+  For genuine extrapolation, train on a limited range (for example ±30°) and test beyond it (for example 30°–60°).
+- **Teachers must see the goal angle:** state observations include only the goal's *position* (`extra/goal_pos`), not its rotation.
+  Goal-conditioned teachers would need the goal angle added to their observation (for example as sin/cos). The transformer would still hide it.
+- **Teachers train on the full range;** only the transformer's training goals exclude the held-out angles.
+- **Keep axes separate in testing,** as with the start hold-out: in-distribution, position hold-out only, angle hold-out only, and both.
 
 ## Decisions log
 
@@ -468,3 +515,5 @@ examples many w fit the data, and the best predictor averages over them. For pol
 - **2026-11-23:** Random stick-tip starts added to `PushT-VariableGoal-v1` (inverse-kinematics placement, T clearance, fallback, per-episode
   start records), `--start-quadrants`, tip checks in `check-env`, and start records saved with collected data. Offline tests extended to 24
   (tip sampling and clearance, start/goal independence, IK solver on a test arm, initial guess). Notebook rebuilt.
+- **2026-11-23:** First run 3 launch: PPO at about 6,700 SPS. Stopped. Replaced per-reset IK with a one-time 64 × 64 lookup table
+  (`tip_grid_offsets`, `grid_index`, `choose_tip_cells`, `_build_ik_table`); `check-env` reports grid reachability. Offline tests: 25. Notebook rebuilt.

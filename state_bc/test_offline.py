@@ -131,22 +131,40 @@ class VariableGoalTests(unittest.TestCase):
             self.vg._check_quadrants((0, 5), "goal_quadrants")
         self.assertEqual(self.vg._check_quadrants([4, 1, 1], "x"), (1, 4))
 
-    def test_tip_starts_clear_the_T_and_respect_quadrants(self):
+    def test_grid_cells_contain_their_points_and_keep_quadrants(self):
+        vg = self.vg
+        grid = vg.tip_grid_offsets()
+        self.assertEqual(grid.shape, (vg.TIP_GRID ** 2, 2))
+        np.testing.assert_array_equal(vg.grid_index(grid).numpy(), np.arange(vg.TIP_GRID ** 2))
+        torch.manual_seed(4)
+        pts, quads = vg.sample_goal_offsets(5000, (1, 2, 3, 4), vg.TIP_HALF_WIDTH)
+        cells = grid[vg.grid_index(pts)]
+        half_cell = vg.TIP_HALF_WIDTH / vg.TIP_GRID
+        self.assertLessEqual((cells - pts).abs().max().item(), half_cell + 1e-6)  # tip within half a cell
+        np.testing.assert_array_equal(vg.quadrant_of(cells).numpy(), quads.numpy())
+
+    def test_tip_cells_clear_the_T_respect_quadrants_and_avoid_unreachable(self):
+        vg = self.vg
         torch.manual_seed(1)
+        grid = vg.tip_grid_offsets()
+        valid = torch.ones(len(grid), dtype=torch.bool)
+        valid[grid[:, 0] > 0.10] = False  # pretend a strip is unreachable
         tee = torch.rand(2000, 2) * torch.tensor([0.2, 0.3]) + torch.tensor([-0.1, -0.1])  # PushT-v1 spawn box
-        offs, quads, dist = self.vg.sample_tip_offsets(tee, (1, 2, 4))
-        self.assertTrue(bool((offs.abs() <= self.vg.TIP_HALF_WIDTH).all()))
-        np.testing.assert_array_equal(self.vg.quadrant_of(offs).numpy(), quads.numpy())
+        cell, dist = vg.choose_tip_cells(tee, (1, 2, 4), valid, grid)
+        quads = vg.quadrant_of(grid[cell])
         self.assertNotIn(3, set(quads.tolist()))
-        np.testing.assert_allclose(dist.numpy(), torch.linalg.norm(offs - tee, dim=1).numpy(), atol=1e-6)
-        self.assertGreater((dist >= self.vg.TIP_CLEARANCE).float().mean().item(), 0.97)
+        self.assertTrue(bool(valid[cell].all()))
+        np.testing.assert_allclose(dist.numpy(), torch.linalg.norm(grid[cell] - tee, dim=1).numpy(), atol=1e-6)
+        self.assertGreater((dist >= vg.TIP_CLEARANCE).float().mean().item(), 0.95)
 
     def test_starts_independent_of_goal(self):
         """Tip start sampling never looks at the goal, so start quadrant carries no goal information."""
         torch.manual_seed(2)
         goal_off, goal_q = self.vg.sample_goal_offsets(8000, (1, 2, 3, 4))
         tee = torch.zeros(8000, 2) + torch.tensor([0.0, 0.18])  # T out of the way
-        _, tip_q, _ = self.vg.sample_tip_offsets(tee, (1, 2, 3, 4))
+        grid = self.vg.tip_grid_offsets()
+        cell, _ = self.vg.choose_tip_cells(tee, (1, 2, 3, 4), torch.ones(len(grid), dtype=torch.bool), grid)
+        tip_q = self.vg.quadrant_of(grid[cell])
         table = np.zeros((4, 4))
         np.add.at(table, (goal_q.numpy() - 1, tip_q.numpy() - 1), 1)
         expected = np.outer(table.sum(1), table.sum(0)) / table.sum()

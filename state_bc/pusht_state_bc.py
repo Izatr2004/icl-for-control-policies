@@ -565,6 +565,7 @@ def check_env(args):
                 "tip_start_quadrant_counts": {f"Q{q}": int((tip_q == q).sum()) for q in range(1, 5)},
                 "tee_start_quadrant_counts": {f"Q{q}": int((base.tee_start_quadrant == q).sum()) for q in range(1, 5)},
                 "tip_ik_fallback_rate": base.tip_ik_fallback.float().mean().item(),
+                "tip_grid_reachable_fraction": base._ik["valid_fraction"] if getattr(base, "_ik", None) else None,
                 "tip_ik_error_max_m": base.tip_ik_error.max().item(),
                 "tip_vs_ik_gap_max_m": gap[placed].max().item() if placed.any() else None,
                 "tip_height_range_m": [base.agent.tcp.pose.p[:, 2].min().item(), base.agent.tcp.pose.p[:, 2].max().item()],

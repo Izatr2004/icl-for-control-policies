@@ -6,6 +6,7 @@ Run: python -m unittest state_bc/test_offline.py -v   (from the repo root)
 import json
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -82,6 +83,28 @@ class FakeGoalVecEnv(FakeVecEnv):
                                   tip_start_quadrant=(torch.arange(self.n) + 1) % 4 + 1,
                                   tip_ik_fallback=torch.zeros(self.n, dtype=torch.bool),
                                   spec=["goal_quadrant", "tip_start_quadrant", "tip_ik_fallback"])
+        return out
+
+
+class FakeSharedRawEnv(FakeVecEnv):
+    """Raw (unwrapped) env like PushTVarGoal-v1: no base_env; env.unwrapped has goal_quadrants (the sampling
+    restriction), goal_quadrant (per episode) and goal_tee, but no goal_xy."""
+
+    def __init__(self, n):
+        super().__init__(n)
+        self.unwrapped = types.SimpleNamespace(goal_quadrants=(1, 2, 3, 4))
+        self.seeds, self.quadrants_at_reset = [], []
+
+    def reset(self, seed):
+        out = super().reset(seed)
+        u = self.unwrapped
+        self.seeds.append(seed)
+        self.quadrants_at_reset.append(tuple(u.goal_quadrants))
+        allowed = torch.tensor(u.goal_quadrants)
+        u.goal_quadrant = allowed[torch.arange(self.n) % len(allowed)]
+        p = torch.zeros(self.n, 3)
+        p[:, :2] = torch.randn(self.n, 2, generator=torch.Generator().manual_seed(seed))
+        u.goal_tee = types.SimpleNamespace(pose=types.SimpleNamespace(p=p))
         return out
 
 
@@ -357,6 +380,35 @@ class OfflineTests(unittest.TestCase):
             bc.configure_env("PushT-v1", None, [4])
         bc.configure_env(bc.VARIABLE_GOAL_ENV_ID)
         self.assertEqual(bc.ENV_KWARGS, {})
+
+    def test_shared_env_takes_goal_quadrants_but_not_start_quadrants(self):
+        bc.configure_env(bc.SHARED_ENV_ID, [1, 2, 3])
+        self.assertEqual(bc.ENV_KWARGS, {"goal_quadrants": (1, 2, 3)})
+        with self.assertRaises(ValueError):
+            bc.configure_env(bc.SHARED_ENV_ID, None, [1, 2, 3])
+        bc.configure_env(bc.VARIABLE_GOAL_ENV_ID)
+
+    def test_rollout_on_raw_env_records_goal_xy_from_goal_tee(self):
+        env = FakeSharedRawEnv(6)
+        res, obs, _ = bc.rollout(env, 4, LinearPolicy(np.ones((D_S, D_A))), seed=2,
+                                 labeler=LinearPolicy(np.ones((D_S, D_A))))
+        self.assertEqual(obs.shape, (6, 4, D_S))
+        self.assertEqual(sorted(res["by_goal_quadrant"]), ["Q1", "Q2", "Q3", "Q4"])
+        np.testing.assert_allclose(res["goal_xy_per_episode"], env.unwrapped.goal_tee.pose.p[:, :2].numpy())
+        self.assertEqual(res["goal_quadrant_per_episode"], env.unwrapped.goal_quadrant.tolist())
+
+    def test_eval_per_quadrant_uses_shared_seeds_restricts_goals_and_restores(self):
+        env = FakeSharedRawEnv(5)
+        res = bc.eval_per_quadrant(env, 3, LinearPolicy(np.ones((D_S, D_A))), base_seed=1001, bar=0.0)
+        self.assertEqual(env.seeds, [2001, 3001, 4001, 5001])
+        self.assertEqual(env.quadrants_at_reset, [(1,), (2,), (3,), (4,)])
+        self.assertEqual(env.unwrapped.goal_quadrants, (1, 2, 3, 4))
+        for q in range(1, 5):
+            self.assertEqual(res[f"Q{q}"]["episodes"], 5)
+            self.assertNotIn("by_goal_quadrant", res[f"Q{q}"])
+        self.assertEqual(res["worst_success_once"], min(res[f"Q{q}"]["success_once"] for q in range(1, 5)))
+        self.assertTrue(res["passes_bar"])
+        self.assertFalse(bc.eval_per_quadrant(env, 3, LinearPolicy(np.ones((D_S, D_A))), 1001, bar=1.01)["passes_bar"])
 
     def test_released_ppo_loader_keeps_only_actor(self):
         ref = bc.ReleasedPPOActor(D_S, D_A)

@@ -27,15 +27,17 @@ so they can be mixed in one state-based learner.
 
 ## How to run
 
-- **Current notebook (run 3, variable goal):** [`notebooks/Train_PushT_VariableGoal_PPO_BC.ipynb`](../notebooks/Train_PushT_VariableGoal_PPO_BC.ipynb).
+- **Current notebook (run 4, BC from Jimmy's PPO in the shared `PushTVarGoal-v1`):**
+  [`notebooks/Train_PushT_VarGoal_BC_from_Jimmy.ipynb`](../notebooks/Train_PushT_VarGoal_BC_from_Jimmy.ipynb).
   Upload to Colab, choose an L4 GPU, run top to bottom. Outputs go to `MyDrive/182_final_project/state_bc/<session>/`.
 - **Earlier notebooks (kept as run, not rebuilt):** run 1 [`Train_PushT_State_BC.ipynb`](../notebooks/Train_PushT_State_BC.ipynb),
-  run 2 [`Train_PushT_State_BC_DAgger.ipynb`](../notebooks/Train_PushT_State_BC_DAgger.ipynb). Both use the fixed-goal `PushT-v1`.
-- **Code:** [`pusht_state_bc.py`](pusht_state_bc.py), with subcommands `ppo`, `audit`, `check-env`, `prepare`, `collect`, `train`, `eval`;
-  [`variable_goal_env.py`](variable_goal_env.py) defines `PushT-VariableGoal-v1`. The default environment is now the variable-goal one;
-  pass `--env-id PushT-v1` for the original.
-- **Notebook source:** the notebook embeds both modules. Edit them or `build_notebook.py`, then run
-  `python state_bc/build_notebook.py`. Never edit the notebook's module cells by hand.
+  run 2 [`Train_PushT_State_BC_DAgger.ipynb`](../notebooks/Train_PushT_State_BC_DAgger.ipynb) (both fixed-goal `PushT-v1`), and
+  runs 3/3b [`Train_PushT_VariableGoal_PPO_BC.ipynb`](../notebooks/Train_PushT_VariableGoal_PPO_BC.ipynb) (our own `PushT-VariableGoal-v1`).
+- **Code:** [`pusht_state_bc.py`](pusht_state_bc.py), with subcommands `ppo`, `audit`, `check-env`, `prepare`, `collect`, `train`, `eval`,
+  `eval-quadrants`; [`variable_goal_env.py`](variable_goal_env.py) defines our `PushT-VariableGoal-v1`. `--env-id PushTVarGoal-v1` uses
+  Jimmy's shared environment (`pusht_vargoal.py` must sit next to `pusht_state_bc.py`); `--env-id PushT-v1` the original.
+- **Notebook source:** notebooks embed the modules. Edit them or the builder, then run `python state_bc/build_notebook_run4.py`
+  (run 4; needs Jimmy's commit c87d8ae in the local clone, `git fetch` first). Never edit the notebook's module cells by hand.
 - **Offline tests** (no ManiSkill or GPU): `python -m unittest state_bc/test_offline.py -v`.
   Needs `torch`, `numpy`, `h5py`, `nbformat`.
 
@@ -395,6 +397,75 @@ not that the expert already solved the task.
   recording the first-success step) looks worthwhile. Success-once should be the competence measure, as proposed earlier.
 - **PPO and BC teachers behave almost alike,** so this pair adds little teacher variety by itself; goal variety does the work.
 
+### Jimmy's shared variable-goal environment (found 2026-11-23, after run 3b)
+Jimmy pushed `origin/jimmy-state-rl` (commit c87d8ae) with his own environment, `PushTVarGoal-v1` (`state_rl/pusht_vargoal.py`), and a frozen
+goal-conditioned PPO teacher (`state_rl/teachers/ppo_vargoal_seed1_50M.pt`). His README says everyone using variable goals should use his file,
+so success is measured the same way. **It is not the same task as our `PushT-VariableGoal-v1`:**
+
+| | Ours (`PushT-VariableGoal-v1`) | Jimmy's (`PushTVarGoal-v1`) |
+|---|---|---|
+| Quadrant origin | (−0.156, −0.1), PushT-v1's goal | (−0.156, 0.0), PushT-v1's goal x, centred in y |
+| Goal region | ±10 cm square, no gap | ±10 cm in x, ±20 cm in y, 2 cm / 3 cm band around each axis excluded |
+| T start | PushT-v1's original fixed spawn box (absolute, so independent of the goal), random rotation | Anywhere in a larger fixed box, 8–30 cm from the goal, independent of goal quadrant |
+| Tip start | ±15 cm square, IK lookup table, 15 cm from the T | Fixed box, library of 600 precomputed arm poses, 15 cm from the T |
+| PPO teacher, test success-once / at-end | 98.5% / 29% (run 3b) | 90–97% / 86–97% per quadrant |
+
+**Implications:**
+- The transformer data must come from **one** environment, or the Q4 test means different things for different teachers. Jimmy's was written as the
+  shared one (his decisions log: "Jimmy writes the shared variable-goal env"), and the plan calls for BC **distilled from the PPO teacher**.
+- Jimmy's teacher holds the goal much better (at-end about 90% vs our 29%) with the same `ppo.py` recipe, which removes the success-at-end concern
+  raised above.
+- **Proposed next step (run 4):** distill the BC teacher from Jimmy's frozen PPO teacher in `PushTVarGoal-v1`. This reuses run 3b's collect/train/eval
+  pipeline; only the environment and expert change, and no PPO training is needed (about 30–40 minutes). Run 3b's teachers stay as a record
+  (and as evidence that the warm start works), but are not used for transformer data.
+- **Why Jimmy's and not ours (discussed 2026-11-23, to take to the group):** mostly role and task design, not code quality.
+  - For Jimmy's: PPO is his role and the plan distills BC from it; his file was announced as the shared one; his goal region is wider
+    (±20 cm in y), which makes the Q4 test less mild (a weakness noted for ours above); the axis gap separates quadrants cleanly;
+    his T starts vary more; his teacher holds the goal.
+  - For ours: higher success-once (98.5% vs about 93%); a more thorough `check-env`; exact tip placement over the whole start square;
+    and a `start_quadrants` option that makes the Q4-start hold-out possible, which Jimmy's lacks.
+  - Options: adopt Jimmy's (recommended); adopt ours (Jimmy re-trains or uses run 3b's expert); or adopt Jimmy's and port `start_quadrants` into it.
+- **Which teacher is better? (discussed 2026-11-23)** The numbers are from different tasks, so they cannot be compared directly; Jimmy's task is
+  harder (wider goals, T starts up to 30 cm from the goal). For transformer data, holding the goal matters (cleaner demos), which favours Jimmy's.
+  Proposed test to settle it: **cross-evaluate** both PPO experts in both environments (same 31-number state and checkpoint format), 200 episodes
+  each, per quadrant, success-once and at-end.
+- Agree the transformer rollout format with Jimmy first. He proposes `.npz` with `obs [N, 31]`, `actions [N, 7]`, `episode_ids [N]`, plus
+  `goal_xy [N, 2]` and `goal_quadrant [N]`.
+
+### Run 4 plan: BC distilled from Jimmy's PPO teacher (built 2026-11-23, not yet run)
+Notebook `notebooks/Train_PushT_VarGoal_BC_from_Jimmy.ipynb`, built by `state_bc/build_notebook_run4.py`, session label `run4_bc_from_jimmy`.
+
+| Item | Run 4 |
+|---|---|
+| Environment | Jimmy's `PushTVarGoal-v1`, `state_rl/pusht_vargoal.py` copied unchanged from `jimmy-state-rl` at commit c87d8ae |
+| Expert | Jimmy's frozen `ppo_vargoal_seed1_50M.pt`, same commit |
+| PPO training | none |
+| Expert data, BC model, training | unchanged from run 3b: 16,384 episodes with noise 0 / 0.1 / 0.2 / 0.3, MLP 2 × 256, 200k iterations, no DAgger |
+| Evaluation | Jimmy's per-quadrant protocol for **both** teachers: 100 episodes per quadrant, quadrant q uses seed base + 1000·q, validation base 1001, test base 5001 (once), freeze bar success-once ≥ 80% in every quadrant |
+
+**How Jimmy's files get into Colab:** the GitHub repo is private, so Colab cannot clone it. The builder reads Jimmy's files with
+`git show c87d8ae:<path>` and embeds them in the notebook: the two Python files as `%%writefile` cells, and the arm-pose library (22 KB) and the
+teacher (1.1 MB) as base64, each checked against its SHA-256. The notebook is about 1.6 MB as a result.
+
+**Checks in the notebook before any data is collected:**
+- `audit`
+- Jimmy's own `preflight`: observation layout, per-environment success, partial resets, quadrant restriction
+- our `check-env`
+- a **re-evaluation of Jimmy's teacher** on his validation and test seeds, printed next to his recorded numbers. The GPU differs (L4 vs his T4),
+  so small differences are expected. The notebook stops if the teacher misses the bar in any quadrant.
+
+**Code changes** (`pusht_state_bc.py`):
+- `--env-id PushTVarGoal-v1` imports `pusht_vargoal`, and `--goal-quadrants` works with it.
+- `rollout` also works on an unwrapped environment, and records each episode's goal position from the goal T when the environment does not
+  expose `goal_xy`, so collected data has `goal_xy` and `goal_quadrant` per episode, as in Jimmy's proposed transformer format.
+- New `eval-quadrants` subcommand that reproduces Jimmy's protocol: raw environment, no reconfiguration, goals restricted one quadrant at a time.
+
+Offline tests: 28, all passing. The new ones cover the shared environment's options, goal records on an unwrapped environment, and the
+per-quadrant protocol (seeds, restriction, restore, freeze bar). The builder check confirms every notebook cell parses and the embedded files
+decode to the committed hashes. Not yet run on a GPU.
+
+**Expected:** BC close to Jimmy's teacher (about 90%+ success-once per quadrant) and, unlike run 3b, high success-at-end. Expected time: about 30–40 minutes.
+
 ### Pre-run assessment (2026-11-23, before running)
 The overall design is sound: the hidden goal forces context use, and Q4 goals test generalization. Risks, most likely first:
 1. **PPO may not reach 80% in 50M transitions.** The task is now harder (moving goals and varied tip starts), and the fixed-goal
@@ -463,6 +534,7 @@ pushing strategy changes with the target angle (which way and how far to turn th
 | 2026-11-23 | Run 3b: warm-start PPO from the released fixed-goal expert, 4,096 envs, learning rate 1e-4 | Run 3's from-scratch PPO stalled at 4–11%; Jimmy's PPO status unknown, so train now rather than wait |
 | 2026-11-23 | **Accept run 3b's teachers as the variable-goal full-state teachers** (`teachers/ppo_expert.pt`, `teachers/bc_teacher.pt` in session `20261123T213152Z_run3b_warmstart`) | Test success-once 98.5% (PPO) and 99% (BC), at least 96% in every quadrant including Q4 |
 | 2026-11-23 | Use success-once as the competence measure; consider truncating transformer demos at first success | Run 3b teachers reach the goal reliably but end on it only about 30% of the time |
+| 2026-11-23 | **Use Jimmy's `PushTVarGoal-v1` and his frozen PPO teacher; run 4 distills the BC teacher from it** | One shared environment for all transformer data; PPO is Jimmy's role and BC is distilled from it; his teacher holds the goal (at-end about 90%) and his goal region is wider. Run 3b's teachers are kept as a record, not used for transformer data. Cross-evaluation skipped for now. |
 
 ## v1 plan: variable-goal Push-T (from `CODEX_CONTEXT.md`, 2026-11-23)
 
@@ -630,3 +702,6 @@ examples many w fit the data, and the best predictor averages over them. For pol
 - **2026-11-23:** Run 3b completed in about 65 minutes. The released expert scored 1% on moving goals before fine-tuning; PPO ran at about 17,500 SPS,
   stayed near zero for 20M transitions, then reached about 100%. Test success-once / at-end: PPO expert 98.5% / 29%, BC teacher 99% / 33.5%, every quadrant at least 96%.
   Results recorded above.
+- **2026-11-23:** Found Jimmy's shared `PushTVarGoal-v1` and frozen PPO teacher; decided to use them. Run 4 built: `build_notebook_run4.py` and
+  `Train_PushT_VarGoal_BC_from_Jimmy.ipynb` (Jimmy's files embedded at c87d8ae), `--env-id PushTVarGoal-v1` support, goal records on unwrapped
+  environments, the `eval-quadrants` subcommand. Offline tests: 28.

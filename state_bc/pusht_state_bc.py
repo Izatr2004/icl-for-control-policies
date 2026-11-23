@@ -1,8 +1,10 @@
 """Full-state behavioral cloning (BC) teachers for ManiSkill Push-T.
 
 The default environment is PushT-VariableGoal-v1 (variable_goal_env.py): the goal T's position
-changes every episode, and policies see it in the state. Use --env-id PushT-v1 for the original
-fixed-goal task. --goal-quadrants limits which goal quadrants are sampled.
+changes every episode, and policies see it in the state. --env-id PushTVarGoal-v1 selects the
+group's shared variable-goal environment (Jimmy's state_rl/pusht_vargoal.py, which must sit next to
+this file); --env-id PushT-v1 the original fixed-goal task. --goal-quadrants limits which goal
+quadrants are sampled.
 
 Subcommands (run with the ManiSkill training interpreter):
 
@@ -18,6 +20,9 @@ Subcommands (run with the ManiSkill training interpreter):
              success on validation seeds.
     eval     Evaluate a BC checkpoint, or a PPO checkpoint (--ppo), on a seed range, with
              success broken down by goal quadrant.
+    eval-quadrants  Evaluate checkpoints separately in each goal quadrant with the shared
+             protocol of state_rl/pusht_state_ppo.py (quadrant q uses seed + 1000 * q, no
+             reconfiguration), and check the freeze bar in every quadrant.
 
 Transition files are .npz with obs [N, d_s], actions [N, d_a] and episode_ids [N],
 plus a .json sidecar describing where they came from.
@@ -39,9 +44,12 @@ import torch
 from torch import nn
 
 VARIABLE_GOAL_ENV_ID = "PushT-VariableGoal-v1"
+SHARED_ENV_ID = "PushTVarGoal-v1"       # Jimmy's shared env, module pusht_vargoal.py (state_rl/)
+GOAL_ENV_IDS = (VARIABLE_GOAL_ENV_ID, SHARED_ENV_ID)
 ENV_ID = VARIABLE_GOAL_ENV_ID  # set by configure_env() from --env-id
 ENV_KWARGS = {}                # set by configure_env() from --goal-quadrants / --start-quadrants
-# Per-episode records exposed by PushT-VariableGoal-v1 and saved with collected data.
+# Per-episode records exposed by the variable-goal envs and saved with collected data.
+# PushTVarGoal-v1 exposes only goal_quadrant; goal_xy is then read from the goal T's pose.
 EPISODE_RECORDS = ("goal_quadrant", "goal_xy", "tip_start_quadrant", "tip_start_xy", "tee_start_quadrant",
                    "tip_ik_fallback")
 OBS_MODE = "state"
@@ -250,8 +258,12 @@ def rollout(env, max_steps, driver, seed, labeler=None, noise_std=0.0, generator
     n = obs.shape[0]
     device = obs.device
     base = getattr(env, "base_env", None)
-    # Per-episode start/goal records from PushT-VariableGoal-v1, read right after reset.
+    if base is None:
+        base = getattr(env, "unwrapped", None)   # raw ManiSkill env (no vector wrapper)
+    # Per-episode start/goal records from the variable-goal envs, read right after reset.
     records = {name: getattr(base, name).clone() for name in EPISODE_RECORDS if hasattr(base, name)}
+    if "goal_xy" not in records and hasattr(base, "goal_quadrant") and hasattr(base, "goal_tee"):
+        records["goal_xy"] = base.goal_tee.pose.p[:, :2].clone()
     quadrant = records.get("goal_quadrant")
     success_once = torch.zeros(n, dtype=torch.bool, device=device)
     first_success = torch.full((n,), -1, dtype=torch.long, device=device)
@@ -401,13 +413,14 @@ def configure_env(env_id, goal_quadrants=None, start_quadrants=None):
     """Select the environment for this process (registration happens in make_env)."""
     global ENV_ID, ENV_KWARGS
     ENV_ID, ENV_KWARGS = env_id, {}
-    if env_id == VARIABLE_GOAL_ENV_ID:
-        if goal_quadrants:
-            ENV_KWARGS["goal_quadrants"] = tuple(goal_quadrants)
-        if start_quadrants:
-            ENV_KWARGS["start_quadrants"] = tuple(start_quadrants)
-    elif goal_quadrants or start_quadrants:
-        raise ValueError("--goal-quadrants and --start-quadrants only apply to " + VARIABLE_GOAL_ENV_ID)
+    if goal_quadrants:
+        if env_id not in GOAL_ENV_IDS:
+            raise ValueError("--goal-quadrants only applies to " + " and ".join(GOAL_ENV_IDS))
+        ENV_KWARGS["goal_quadrants"] = tuple(goal_quadrants)
+    if start_quadrants:
+        if env_id != VARIABLE_GOAL_ENV_ID:
+            raise ValueError("--start-quadrants only applies to " + VARIABLE_GOAL_ENV_ID)
+        ENV_KWARGS["start_quadrants"] = tuple(start_quadrants)
 
 
 def make_env(num_envs, obs_mode=OBS_MODE, **kwargs):
@@ -418,6 +431,8 @@ def make_env(num_envs, obs_mode=OBS_MODE, **kwargs):
         import variable_goal_env  # registers PushT-VariableGoal-v1
         if variable_goal_env.PushTVariableGoalEnv is None:
             raise ImportError("variable_goal_env could not import ManiSkill; the environment is not registered")
+    elif ENV_ID == SHARED_ENV_ID:
+        import pusht_vargoal  # noqa: F401  (registers PushTVarGoal-v1; Jimmy's state_rl/pusht_vargoal.py)
     return gym.make(ENV_ID, num_envs=num_envs, obs_mode=obs_mode, control_mode=CONTROL_MODE,
                     sim_backend=SIM_BACKEND, render_mode="rgb_array", **ENV_KWARGS, **kwargs)
 
@@ -602,9 +617,61 @@ class Evaluator:
 
 
 def load_expert(path, env, device):
-    state_dim = int(np.prod(env.single_observation_space.shape))
-    action_dim = int(np.prod(env.single_action_space.shape))
+    spaces = env if hasattr(env, "single_observation_space") else env.unwrapped
+    state_dim = int(np.prod(spaces.single_observation_space.shape))
+    action_dim = int(np.prod(spaces.single_action_space.shape))
     return load_released_ppo(path, state_dim, action_dim, device)
+
+
+def eval_per_quadrant(env, max_steps, policy, base_seed, quadrants=(1, 2, 3, 4), bar=None):
+    """Shared per-quadrant protocol (state_rl/pusht_state_ppo.py): for each quadrant q, restrict goals
+    to q and run one batch of episodes with seed base_seed + 1000 * q."""
+    base = env.unwrapped
+    original = tuple(base.goal_quadrants)
+    out = {}
+    try:
+        for q in quadrants:
+            base.goal_quadrants = (q,)
+            r = rollout(env, max_steps, policy, base_seed + 1000 * q)
+            if not bool((base.goal_quadrant == q).all()):
+                raise AssertionError(f"goals left the requested quadrant Q{q}")
+            r.pop("by_goal_quadrant", None)
+            out[f"Q{q}"] = r
+    finally:
+        base.goal_quadrants = original
+    once = [out[f"Q{q}"]["success_once"] for q in quadrants]
+    end = [out[f"Q{q}"]["success_at_end"] for q in quadrants]
+    out.update(worst_success_once=min(once), mean_success_once=float(np.mean(once)),
+               mean_success_at_end=float(np.mean(end)))
+    if bar is not None:
+        out.update(freeze_bar=bar, passes_bar=all(v >= bar for v in once))
+    return out
+
+
+def eval_quadrants(args):
+    """Each checkpoint, quadrant by quadrant, on a raw (unwrapped, not reconfigured) env, as in
+    state_rl/pusht_state_ppo.py, so BC and PPO teachers are scored on the same episodes."""
+    device = torch.device(args.device)
+    env = make_env(args.episodes)
+    if not hasattr(env.unwrapped, "goal_quadrants"):
+        env.close()
+        raise SystemExit(f"{ENV_ID} has no goal_quadrants; eval-quadrants needs a variable-goal env")
+    rows = []
+    try:
+        max_steps = episode_length(env)
+        for ckpt in args.checkpoint:
+            policy = load_expert(ckpt, env, device) if args.ppo else load_policy(ckpt, device)
+            r = eval_per_quadrant(env, max_steps, policy, args.seed, bar=args.bar)
+            rows.append({"checkpoint": str(ckpt), "env_id": ENV_ID, "episodes_per_quadrant": args.episodes,
+                         "base_seed": args.seed, **r})
+            print(f"{Path(ckpt).name:>24}  worst {r['worst_success_once']:.0%}  mean {r['mean_success_once']:.0%}  "
+                  + "  ".join(f"Q{q} {r[f'Q{q}']['success_once']:.0%}/{r[f'Q{q}']['success_at_end']:.0%}"
+                              for q in (1, 2, 3, 4)), flush=True)
+    finally:
+        env.close()
+    if args.out:
+        Path(args.out).write_text(json.dumps(rows if len(rows) > 1 else rows[0], indent=2))
+    return rows
 
 
 def evaluate(args):
@@ -743,6 +810,15 @@ def main(argv=None):
     t.add_argument("--val-seed", type=int, default=1001)
     t.add_argument("--device", default=default_device)
 
+    eq = sub.add_parser("eval-quadrants", parents=[env_opts])
+    eq.add_argument("--checkpoint", nargs="+", required=True)
+    eq.add_argument("--ppo", action="store_true", help="checkpoints are ManiSkill ppo.py checkpoints")
+    eq.add_argument("--episodes", type=int, default=100, help="per quadrant")
+    eq.add_argument("--seed", type=int, default=1001, help="quadrant q uses seed + 1000 * q")
+    eq.add_argument("--bar", type=float, default=0.80, help="freeze bar: success-once in every quadrant")
+    eq.add_argument("--out", default="")
+    eq.add_argument("--device", default=default_device)
+
     e = sub.add_parser("eval", parents=[env_opts])
     e.add_argument("--checkpoint", required=True)
     e.add_argument("--ppo", "--released-ppo", dest="ppo", action="store_true",
@@ -759,7 +835,7 @@ def main(argv=None):
     if hasattr(args, "env_id"):
         configure_env(args.env_id, args.goal_quadrants, args.start_quadrants)
     {"audit": audit, "check-env": check_env, "prepare": prepare, "collect": collect, "train": train,
-     "eval": evaluate}[args.cmd](args)
+     "eval": evaluate, "eval-quadrants": eval_quadrants}[args.cmd](args)
 
 
 if __name__ == "__main__":

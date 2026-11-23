@@ -432,7 +432,7 @@ so success is measured the same way. **It is not the same task as our `PushT-Var
 - Agree the transformer rollout format with Jimmy first. He proposes `.npz` with `obs [N, 31]`, `actions [N, 7]`, `episode_ids [N]`, plus
   `goal_xy [N, 2]` and `goal_quadrant [N]`.
 
-### Run 4 plan: BC distilled from Jimmy's PPO teacher (built 2026-11-23, not yet run)
+### Run 4 plan: BC distilled from Jimmy's PPO teacher (built 2026-11-23; ran the same day, results below)
 Notebook `notebooks/Train_PushT_VarGoal_BC_from_Jimmy.ipynb`, built by `state_bc/build_notebook_run4.py`, session label `run4_bc_from_jimmy`.
 
 | Item | Run 4 |
@@ -465,6 +465,55 @@ per-quadrant protocol (seeds, restriction, restore, freeze bar). The builder che
 decode to the committed hashes. Not yet run on a GPU.
 
 **Expected:** BC close to Jimmy's teacher (about 90%+ success-once per quadrant) and, unlike run 3b, high success-at-end. Expected time: about 30–40 minutes.
+
+### Run 4 result: BC teacher passes the bar in every quadrant (2026-11-23)
+**Drive session:** `state_bc/20261123T230947Z_run4_bc_from_jimmy`. The whole notebook took about **14 minutes** (23:10 to 23:23 UTC, L4), well under the estimate.
+Results were read from the Drive files (`teachers/summary.json`, `env_check.json`, `notebook.log`).
+
+**Checks:**
+- `audit`: 31-number state with the goal at 21:24, `pd_joint_delta_pos`, 100 steps.
+- Jimmy's `preflight`: all 10 checks pass.
+- Our `check-env` passes: stand-in T on goal overlap ≥ 0.948, shifted 5 cm ≤ 0.339. Goals span x −0.256 to −0.057 and y −0.199 to 0.198; quadrants 67 / 56 / 72 / 61 of 256.
+
+**Jimmy's teacher reproduced** (100 episodes per quadrant, success-once / success-at-end; Jimmy's Kaggle T4 numbers in brackets):
+
+| Split | Q1 | Q2 | Q3 | Q4 |
+|---|---|---|---|---|
+| Validation (base 1001) | 91 / 86 [93 / 83] | 96 / 92 [93 / 90] | 92 / 88 [91 / 86] | 95 / 92 [96 / 94] |
+| Test (base 5001) | 94 / 88 [94 / 86] | 95 / 95 [97 / 97] | 93 / 91 [92 / 87] | 93 / 92 [90 / 89] |
+
+Every number is within 3 points of his. The episodes are seeded identically, so the small gaps come from GPU physics (L4 vs T4), not a protocol difference.
+
+**Expert data:** 16,384 episodes, 1.64M transitions. Driver success-once by noise level 0 / 0.1 / 0.2 / 0.3: about 94% / 96% / 92% / 76%. Success-at-end by noise level: 90% / 71% / 31% / 14%.
+Action noise mostly knocks the T off the goal *after* reaching it, which matters for transformer demos (see below).
+
+**BC training:** 200k iterations in 5.7 minutes. Validation MSE fell from 0.0168 to 0.0031 with no sign of overfitting (train MSE 0.0039).
+Closed-loop validation (200 mixed episodes) stayed at 89–94% success-once and 85–89% success-at-end from 25k iterations on. The best checkpoint
+scored 94.5% / 89.5%.
+
+**Test** (100 episodes per quadrant, base seed 5001, used once; success-once / success-at-end):
+
+| Teacher | Q1 | Q2 | Q3 | Q4 | Worst once | Mean once / end |
+|---|---|---|---|---|---|---|
+| PPO (Jimmy, `teachers/ppo_expert.pt`) | 94 / 88 | 95 / 95 | 93 / 91 | 93 / 92 | 93% | 93.8% / 91.5% |
+| **BC (distilled, `teachers/bc_teacher.pt`)** | 92 / 90 | 94 / 93 | 89 / 84 | 91 / 88 | **89%** | **91.5% / 88.8%** |
+
+On validation, BC scored 88 / 81, 93 / 93, 91 / 88 and 90 / 88 (worst 88%). Both teachers **pass the 80% freeze bar in every quadrant**.
+
+**Conclusions:**
+- **The full-state BC teacher is done.** BC is about 2 points below its expert on average, within the noise of 100 episodes per quadrant (about ±3 points).
+  This is the third time distillation without DAgger has matched the expert closely.
+- **Success-at-end is solved:** about 89%, against 33% in run 3b, because Jimmy's teacher holds the goal. Demos mostly end with the T on the goal.
+- **Q4 is no weaker than the other quadrants** for either teacher, so a transformer failure on Q4 goals will not be explained by weak teachers there.
+- **For transformer data, use noise-free teacher rollouts.** The noisy rollouts here are for BC robustness only. With noise 0.2–0.3, most episodes end
+  off the goal (success-at-end 14–31%), which would blur the hidden-goal signal in the context.
+- Both teachers act almost identically (BC imitates PPO), as expected. They add little variety to the transformer's training mix on their own.
+
+**Should DAgger or more tuning improve it? (discussed 2026-11-23) No; leave the teacher as is.**
+- The gap to the expert (about 2 points) is within the noise of 100 episodes per quadrant, and BC cannot exceed its expert, so the most there is to gain is about 2 points.
+- In run 2, DAgger added nothing measurable over noisy expert rollouts. The noise injection already covers the off-course states DAgger would add.
+- The teacher's job is to clear the bar in every quadrant and give clean demos. It does both. Time is better spent on transformer data collection.
+- If the gap ever matters, first evaluate with more episodes (for example 500 per quadrant) to see whether it is real, before changing training.
 
 ### Pre-run assessment (2026-11-23, before running)
 The overall design is sound: the hidden goal forces context use, and Q4 goals test generalization. Risks, most likely first:
@@ -534,6 +583,7 @@ pushing strategy changes with the target angle (which way and how far to turn th
 | 2026-11-23 | Run 3b: warm-start PPO from the released fixed-goal expert, 4,096 envs, learning rate 1e-4 | Run 3's from-scratch PPO stalled at 4–11%; Jimmy's PPO status unknown, so train now rather than wait |
 | 2026-11-23 | **Accept run 3b's teachers as the variable-goal full-state teachers** (`teachers/ppo_expert.pt`, `teachers/bc_teacher.pt` in session `20261123T213152Z_run3b_warmstart`) | Test success-once 98.5% (PPO) and 99% (BC), at least 96% in every quadrant including Q4 |
 | 2026-11-23 | Use success-once as the competence measure; consider truncating transformer demos at first success | Run 3b teachers reach the goal reliably but end on it only about 30% of the time |
+| 2026-11-23 | **Freeze run 4's BC teacher as the full-state BC teacher** (`teachers/bc_teacher.pt` in session `20261123T230947Z_run4_bc_from_jimmy`) | Test success-once 89–94% in every quadrant (bar 80%), about 2 points below Jimmy's PPO; success-at-end 84–93% |
 | 2026-11-23 | **Use Jimmy's `PushTVarGoal-v1` and his frozen PPO teacher; run 4 distills the BC teacher from it** | One shared environment for all transformer data; PPO is Jimmy's role and BC is distilled from it; his teacher holds the goal (at-end about 90%) and his goal region is wider. Run 3b's teachers are kept as a record, not used for transformer data. Cross-evaluation skipped for now. |
 
 ## v1 plan: variable-goal Push-T (from `CODEX_CONTEXT.md`, 2026-11-23)
@@ -705,3 +755,5 @@ examples many w fit the data, and the best predictor averages over them. For pol
 - **2026-11-23:** Found Jimmy's shared `PushTVarGoal-v1` and frozen PPO teacher; decided to use them. Run 4 built: `build_notebook_run4.py` and
   `Train_PushT_VarGoal_BC_from_Jimmy.ipynb` (Jimmy's files embedded at c87d8ae), `--env-id PushTVarGoal-v1` support, goal records on unwrapped
   environments, the `eval-quadrants` subcommand. Offline tests: 28.
+- **2026-11-23:** Run 4 completed in about 14 minutes. Jimmy's teacher reproduced within 3 points of his numbers. BC test success-once / at-end per
+  quadrant: Q1 92 / 90, Q2 94 / 93, Q3 89 / 84, Q4 91 / 88. Both teachers pass the 80% bar in every quadrant. Results recorded above.

@@ -1,0 +1,75 @@
+{
+  "selected": "/kaggle/working/state_rl/20261123T175237Z_vargoal_50M/runs/vargoal_state_seed1_50M/final_ckpt.pt",
+  "val": {
+    "checkpoint": "/kaggle/working/state_rl/20261123T175237Z_vargoal_50M/runs/vargoal_state_seed1_50M/final_ckpt.pt",
+    "Q1": {
+      "episodes": 100,
+      "seed": 2001,
+      "success_once": 0.9300000071525574,
+      "success_at_end": 0.8299999833106995,
+      "mean_steps_to_first_success": 43.935482025146484
+    },
+    "Q2": {
+      "episodes": 100,
+      "seed": 3001,
+      "success_once": 0.9300000071525574,
+      "success_at_end": 0.8999999761581421,
+      "mean_steps_to_first_success": 42.92473220825195
+    },
+    "Q3": {
+      "episodes": 100,
+      "seed": 4001,
+      "success_once": 0.9099999666213989,
+      "success_at_end": 0.85999995470047,
+      "mean_steps_to_first_success": 43.82417678833008
+    },
+    "Q4": {
+      "episodes": 100,
+      "seed": 5001,
+      "success_once": 0.9599999785423279,
+      "success_at_end": 0.9399999976158142,
+      "mean_steps_to_first_success": 46.375
+    },
+    "worst_success_once": 0.9099999666213989,
+    "mean_success_once": 0.9324999898672104,
+    "mean_success_at_end": 0.8824999779462814
+  },
+  "freeze_bar": 0.8,
+  "val_seed": 1001,
+  "episodes_per_quadrant": 100,
+  "test": {
+    "Q1": {
+      "episodes": 100,
+      "seed": 6001,
+      "success_once": 0.9399999976158142,
+      "success_at_end": 0.85999995470047,
+      "mean_steps_to_first_success": 47.13829803466797
+    },
+    "Q2": {
+      "episodes": 100,
+      "seed": 7001,
+      "success_once": 0.9699999690055847,
+      "success_at_end": 0.9699999690055847,
+      "mean_steps_to_first_success": 42.340206146240234
+    },
+    "Q3": {
+      "episodes": 100,
+      "seed": 8001,
+      "success_once": 0.9199999570846558,
+      "success_at_end": 0.8700000047683716,
+      "mean_steps_to_first_success": 46.21739196777344
+    },
+    "Q4": {
+      "episodes": 100,
+      "seed": 9001,
+      "success_once": 0.8999999761581421,
+      "success_at_end": 0.8899999856948853,
+      "mean_steps_to_first_success": 47.28889083862305
+    },
+    "worst_success_once": 0.8999999761581421,
+    "mean_success_once": 0.9324999749660492,
+    "mean_success_at_end": 0.8974999785423279
+  },
+  "test_seed": 5001,
+  "passes_bar": true
+}

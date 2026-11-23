@@ -6,6 +6,7 @@ its results, what we concluded, and what we changed next. **Add to it; don't rew
 
 Contents: [Role](#role-in-the-project) · [How to run](#how-to-run) · [Setup](#setup-shared-with-the-team) ·
 [Run 1](#run-1-bc-on-released-demos) · [Run 2](#run-2-more-expert-data--dagger) · [Next steps](#next-steps-proposed-not-started) ·
+[Run 3](#run-3-variable-goal-ppo-expert--distilled-bc) ·
 [Decisions](#decisions-log) · [Ideas and open questions](#ideas-and-open-questions) · [Changelog](#changelog)
 
 ## Role in the project
@@ -26,12 +27,15 @@ so they can be mixed in one state-based learner.
 
 ## How to run
 
-- **Current notebook (run 2):** [`notebooks/Train_PushT_State_BC_DAgger.ipynb`](../notebooks/Train_PushT_State_BC_DAgger.ipynb).
+- **Current notebook (run 3, variable goal):** [`notebooks/Train_PushT_VariableGoal_PPO_BC.ipynb`](../notebooks/Train_PushT_VariableGoal_PPO_BC.ipynb).
   Upload to Colab, choose an L4 GPU, run top to bottom. Outputs go to `MyDrive/182_final_project/state_bc/<session>/`.
-- **Run 1 notebook (kept as run):** [`notebooks/Train_PushT_State_BC.ipynb`](../notebooks/Train_PushT_State_BC.ipynb).
-- **Code:** [`pusht_state_bc.py`](pusht_state_bc.py), with subcommands `audit`, `prepare`, `collect`, `train`, `eval`.
-- **Notebook source:** the notebook embeds the module. Edit `pusht_state_bc.py` or `build_notebook.py`, then run
-  `python state_bc/build_notebook.py`. Never edit the notebook's module cell by hand.
+- **Earlier notebooks (kept as run, not rebuilt):** run 1 [`Train_PushT_State_BC.ipynb`](../notebooks/Train_PushT_State_BC.ipynb),
+  run 2 [`Train_PushT_State_BC_DAgger.ipynb`](../notebooks/Train_PushT_State_BC_DAgger.ipynb). Both use the fixed-goal `PushT-v1`.
+- **Code:** [`pusht_state_bc.py`](pusht_state_bc.py), with subcommands `ppo`, `audit`, `check-env`, `prepare`, `collect`, `train`, `eval`;
+  [`variable_goal_env.py`](variable_goal_env.py) defines `PushT-VariableGoal-v1`. The default environment is now the variable-goal one;
+  pass `--env-id PushT-v1` for the original.
+- **Notebook source:** the notebook embeds both modules. Edit them or `build_notebook.py`, then run
+  `python state_bc/build_notebook.py`. Never edit the notebook's module cells by hand.
 - **Offline tests** (no ManiSkill or GPU): `python -m unittest state_bc/test_offline.py -v`.
   Needs `torch`, `numpy`, `h5py`, `nbformat`.
 
@@ -194,6 +198,96 @@ so check it again when distilling a different expert.
    With the run 2 recipe, each teacher costs about 10 minutes of collection and training.
 3. **Diversity checks:** action differences on shared states and a teacher-identification classifier, before scaling up.
 
+(Superseded on 2026-11-23 by the variable-goal v1 design; see the v1 plan and run 3.)
+
+## Run 3: variable-goal PPO expert + distilled BC
+
+**Status:** built 2026-11-23, not yet run. **Notebook:** `Train_PushT_VariableGoal_PPO_BC.ipynb`.
+
+### Purpose
+v1 needs teachers that push the T to **any** goal, with the goal in their observation (see the v1 plan). This run builds
+the variable-goal environment, trains a goal-conditioned PPO expert, distills a BC teacher from it, and validates both per quadrant.
+
+### Environment: `PushT-VariableGoal-v1` ([`variable_goal_env.py`](variable_goal_env.py))
+| | PushT-v1 | PushT-VariableGoal-v1 |
+|---|---|---|
+| Goal T position | fixed at (−0.156, −0.100) | uniform within **±10 cm** of that point in x and y, new every episode |
+| Goal quadrants | | Q1 (+x,+y), Q2 (−x,+y), Q3 (−x,−y), Q4 (+x,−y) around that point, world frame; quadrant drawn uniformly from the allowed set (`goal_quadrants`, default all four), then a uniform point inside it |
+| Goal rotation | 5π/3 | unchanged |
+| Success check | one fixed goal transform computed at load | **per-environment transform, recomputed at every reset** |
+| Movable T start | random position in a fixed box, random rotation | unchanged (same absolute box) |
+| Stick tip start | fixed near (−0.32, 0.28), ±0.02 rad joint noise | **random within ±15 cm of the centre** (quadrant from `start_quadrants`, default all four), at least 15 cm from the T's centre, placed by inverse kinematics at PushT-v1's rest tip height and stick orientation. Independent of the goal. Added 2026-11-23; see below. |
+| Observation | `goal_pos` constant | `goal_pos` varies (same 31 fields) |
+| Reward | pose-based dense reward | unchanged; its translation term already reads the live goal pose, and its rotation term uses the fixed goal rotation |
+
+The goal square (x −0.256 to −0.056, y −0.200 to 0.000) lies inside the movable T's original spawn box, so goals stay in a region the
+original task already covers. **This quadrant definition is the default agreed for now (2026-11-23); the group can change it** via
+`GOAL_HALF_WIDTH` and the centre in `variable_goal_env.py`.
+
+**Built-in check (`check-env`):** places a stand-in T exactly on each episode's goal and runs the environment's overlap computation;
+all must count as success, and none may after a 5 cm shift. It also compares the simulator's actual stick-tip position after reset
+with the inverse-kinematics target (must agree within 2 cm, which catches a wrong robot-base offset or kinematic chain) and allows
+at most 5% of episodes to fall back to PushT-v1's start. Runs before PPO so a broken environment cannot waste a training run.
+
+### Pipeline and settings
+| Step | Settings |
+|---|---|
+| PPO expert | ManiSkill `ppo.py`, unchanged, run with the new env registered: 1,024 envs, 16 steps, 32 minibatches, 8 epochs, γ 0.99, 50M transitions, seed 1. Same as Neil's PPO settings but with state observations. |
+| Expert selection | final checkpoint plus the 4 latest periodic ones, evaluated on 200 validation episodes (seed 1001); best success-once, then success-at-end. Stops if below 80% success-once. |
+| Expert data | 16,384 episodes (about 1.6M transitions), action noise cycling 0 / 0.1 / 0.2 / 0.3 per batch, labels noise-free; goals in all four quadrants |
+| BC validation data | 1,024 noise-free expert episodes on separate seeds (300,000+) for validation action error |
+| BC teacher | MLP 2 × 256 ReLU, tanh output, MSE, Adam 3e-4 cosine, batch 1024, **200k iterations**, **no DAgger** |
+| Evaluation | 200 episodes per evaluation (about 50 per quadrant); success reported overall and per goal quadrant |
+| Outputs | `teachers/ppo_expert.pt`, `teachers/bc_teacher.pt`, per-quadrant test results in `teachers/summary.json` |
+
+### Changes from run 2, and why
+| Change | Why |
+|---|---|
+| Variable-goal environment | v1 design: goal-conditioned teachers |
+| Train our own PPO expert | The released expert only knows the fixed goal. Jimmy's goal-conditioned PPO can replace it later via `PPO_CHECKPOINT`. |
+| No released demos; validation data from expert rollouts | Released demos all use the fixed goal |
+| No DAgger | Run 2: round 0 already matched the expert |
+| Expert episodes 8,192 → 16,384 | More goal variety to cover |
+| BC iterations 100k → 200k | Goal-conditioned mapping is harder; about 6 minutes on an L4 if run 2's speed holds |
+| Evaluation episodes 100 → 200 | About 50 per quadrant, so per-quadrant numbers are less noisy |
+| Selection of the expert by success-once | The expert's job is to reach goals; consistent with the success-once proposal for competence |
+
+### Robot start position (discussed and built 2026-11-23)
+The first version of run 3 kept PushT-v1's robot start: a fixed rest posture with about ±0.02 rad joint noise, so the stick tip always
+started near (−0.32, 0.28). `CODEX_CONTEXT.md` says starting positions (stick tip and T) should cover Q1–Q4, so this was changed
+before running:
+- **Sampling:** quadrant uniformly from `start_quadrants`, then a uniform point within ±15 cm of the centre in that quadrant.
+  32 candidates per episode; the first at least 15 cm from the T's centre of mass is kept (the T reaches about 14 cm from it),
+  else the farthest. Sampled independently of the goal.
+- **Placement:** batched damped-least-squares inverse kinematics on the GPU (60 iterations) using `pytorch_kinematics`, which ManiSkill
+  already uses for its end-effector controllers. Target: the sampled point at PushT-v1's rest tip height, with the rest stick orientation.
+  Initial guess: the rest posture with the base joint turned toward the target. Joint limits enforced.
+- **Fallback:** if inverse kinematics misses by more than 1 cm, that episode uses PushT-v1's rest posture, and is flagged.
+- **Records per episode:** `tip_start_xy`, `tip_start_quadrant`, `tee_start_quadrant`, `tip_ik_error`, `tip_ik_fallback`. Collected data
+  saves these with the goal records, so start hold-outs and the 2 × 2 test grid can be built from it later.
+- `random_tip_start=False` restores PushT-v1's tip start.
+- **Unverified until it runs:** reachability of the whole ±15 cm square and the fallback rate; `check-env` reports both.
+  Varied starts also make the task harder, so PPO may need more than 50M transitions.
+
+**This does not stop the transformer from "cheating" with its weights.** The start state is visible in the query observation, so the
+weights can use it directly; extra visible variety does not force reading the context. What forces context use is that the correct
+action depends on something **hidden** (the goal) that only the demos reveal. Start randomization still helps: it matches the context,
+makes teachers robust to varied starts, and enables start hold-outs.
+
+**Remaining ways the transformer could avoid the context, and the guards:**
+- **Goal leakage in inputs:** drop `goal_pos` (indices 21:24) and anything derived from it from transformer inputs.
+- **Query states that hint at the goal:** a mid-episode query state from a teacher rollout (block already moving toward the goal) partly reveals the goal.
+  Closed-loop evaluation from fresh starts avoids this; for action-error metrics, report early-step queries separately.
+- **Starts correlated with goals:** keep start sampling independent of the goal (it is in `PushT-VariableGoal-v1`).
+- **A good average policy:** the no-context and wrong-goal-context controls measure how far the transformer gets without the right demos.
+  The ICL effect is the gap between correct context and those controls.
+
+### What to look at when it runs
+- `check-env` must pass.
+- PPO's own `eval_success_once_mean` should climb; if it stays low, 50M transitions may not be enough for variable goals.
+- Per-quadrant success of the expert and BC teacher: any weak quadrant matters, especially Q4, since the transformer will be tested there.
+- BC vs expert gap, as in run 2.
+
 ## Decisions log
 
 | Date | Decision | Reason |
@@ -214,6 +308,10 @@ so check it again when distilling a different expert.
 | 2026-11-22 | Treat DAgger as optional for future expert-distilled BC teachers | Run 2 round 0 (no DAgger) already matched the expert; later rounds were within noise |
 | 2026-11-22 | **v1 of the project focuses on out-of-distribution tests**; Garg-style parameterized policy families are deferred | Group decision. Izat is updating the repo's project context to match; BC work waits for that update. |
 | 2026-11-23 | **v1 design adopted: variable-goal Push-T** (`CODEX_CONTEXT.md` on main, commit 9915e87) | Teachers are goal-conditioned (see goal) and trained on goals in Q1–Q4. The transformer never sees the goal and trains on Q1–Q3 goals only; the OOD test is Q4 goals. Hidden goal makes context necessary. |
+| 2026-11-23 | Train a goal-conditioned PPO expert inside the BC notebook | Not blocked on Jimmy; his PPO can replace it later |
+| 2026-11-23 | Default quadrants: goals within ±10 cm of PushT-v1's goal, quadrants by sign of the offset | No group definition yet; easy to change |
+| 2026-11-23 | No DAgger for the variable-goal BC teacher | Run 2 showed it added nothing measurable |
+| 2026-11-23 | Randomize the stick-tip start (±15 cm, by quadrant, independent of the goal) | `CODEX_CONTEXT.md` puts starts in Q1–Q4; also enables start hold-outs. Not an anti-cheating measure: the hidden goal is. |
 
 ## v1 plan: variable-goal Push-T (from `CODEX_CONTEXT.md`, 2026-11-23)
 
@@ -241,6 +339,18 @@ without goal coordinates or weight updates? Target position varies; target orien
 
 **Open questions:** where the quadrant origin is and what the reachable sampling region is; who writes the shared variable-goal environment;
 when Jimmy's goal-conditioned PPO will be ready; whether the goal-estimate baseline is part of the BC work.
+
+**Idea under discussion (2026-11-23): also hold out Q4 *starts* during transformer training.** `CODEX_CONTEXT.md` currently
+holds out Q4 *goals* only and lists start hold-outs as a later experiment. Assessment:
+- Not a bad idea, but **don't apply both hold-outs to one test set.** If the transformer fails on "Q4 start + Q4 goal", you cannot
+  tell which unfamiliarity caused it. Use separate test cells: Q1–3 start + Q1–3 goal (in distribution), Q1–3 start + **Q4 goal**,
+  **Q4 start** + Q1–3 goal, and Q4 start + Q4 goal.
+- **They test different things.** A goal hold-out tests in-context goal inference (the context is the only source of the goal).
+  A start hold-out tests whether the learned "act toward the inferred goal" behavior extends to unfamiliar states, which is mostly
+  generalization of the weights, unless the model learns to copy how support demos from nearby states behaved.
+- **A start hold-out is leaky:** trajectories from Q1–Q3 starts still pass through Q4 states. It holds out initial configurations,
+  not Q4 states, so describe it that way.
+- **Define "start in Q4":** by the T-block's starting position, the stick tip's, or both.
 
 ## Ideas and open questions
 
@@ -352,3 +462,9 @@ examples many w fit the data, and the best predictor averages over them. For pol
   per-source transition files, and the run 2 notebook. Offline tests extended to 12 (rollout and collection logic use a fake environment).
 - **2026-11-22:** Run 2 completed: 98% / 78% test success (expert 100% / 72%). Results, analysis and proposed next steps recorded above.
 - **2026-11-23:** Adopted the variable-goal v1 design from `CODEX_CONTEXT.md`; recorded what it means for the BC teacher and the environment changes needed.
+- **2026-11-23:** Run 3 built: `variable_goal_env.py` (`PushT-VariableGoal-v1`), `ppo` and `check-env` subcommands, `--env-id` and
+  `--goal-quadrants` options, per-quadrant success in every evaluation, goal quadrant and noise level recorded per collected episode,
+  and the run 3 notebook. Offline tests extended to 19 (goal sampling, quadrant convention, per-goal success transform, per-quadrant reporting).
+- **2026-11-23:** Random stick-tip starts added to `PushT-VariableGoal-v1` (inverse-kinematics placement, T clearance, fallback, per-episode
+  start records), `--start-quadrants`, tip checks in `check-env`, and start records saved with collected data. Offline tests extended to 24
+  (tip sampling and clearance, start/goal independence, IK solver on a test arm, initial guess). Notebook rebuilt.

@@ -73,6 +73,123 @@ class FakeVecEnv:
         pass
 
 
+class FakeGoalVecEnv(FakeVecEnv):
+    """Adds a base_env with per-episode goal quadrants, like PushT-VariableGoal-v1."""
+
+    def reset(self, seed):
+        out = super().reset(seed)
+        self.base_env = mock.Mock(goal_quadrant=torch.arange(self.n) % 4 + 1,
+                                  tip_start_quadrant=(torch.arange(self.n) + 1) % 4 + 1,
+                                  tip_ik_fallback=torch.zeros(self.n, dtype=torch.bool),
+                                  spec=["goal_quadrant", "tip_start_quadrant", "tip_ik_fallback"])
+        return out
+
+
+def import_variable_goal_env():
+    """variable_goal_env's helpers import without ManiSkill; the env class is then None."""
+    import importlib
+
+    sys.modules.pop("variable_goal_env", None)
+    return importlib.import_module("variable_goal_env")
+
+
+class VariableGoalTests(unittest.TestCase):
+    def setUp(self):
+        self.vg = import_variable_goal_env()
+
+    def test_sampled_goals_stay_in_allowed_quadrants_and_box(self):
+        torch.manual_seed(0)
+        offsets, picked = self.vg.sample_goal_offsets(4000, (1, 2, 3))
+        self.assertTrue(bool((offsets.abs() <= self.vg.GOAL_HALF_WIDTH).all()))
+        np.testing.assert_array_equal(self.vg.quadrant_of(offsets).numpy(), picked.numpy())
+        self.assertEqual(set(picked.tolist()), {1, 2, 3})
+        counts = np.bincount(picked.numpy(), minlength=5)[1:4]
+        self.assertTrue(np.all(np.abs(counts / 4000 - 1 / 3) < 0.03))  # balanced across quadrants
+
+    def test_quadrant_convention(self):
+        pts = torch.tensor([[0.05, 0.05], [-0.05, 0.05], [-0.05, -0.05], [0.05, -0.05]])
+        self.assertEqual(self.vg.quadrant_of(pts).tolist(), [1, 2, 3, 4])
+
+    def test_success_transform_maps_each_goal_to_origin(self):
+        angle = 5 / 3 * np.pi
+        base = torch.tensor([[np.cos(angle), -np.sin(angle), -0.156],
+                             [np.sin(angle), np.cos(angle), -0.1], [0, 0, 1]], dtype=torch.float32)
+        goals = torch.tensor([[-0.156, -0.1], [-0.08, -0.03], [-0.25, -0.19]])
+        w2g = self.vg.world_to_goal_transforms(base, goals)
+        homo = torch.cat([goals, torch.ones(3, 1)], 1).unsqueeze(-1)
+        torch.testing.assert_close((w2g @ homo).squeeze(-1), torch.tensor([[0.0, 0.0, 1.0]] * 3),
+                                   atol=1e-5, rtol=0)
+        # the original goal reproduces PushT-v1's fixed transform
+        torch.testing.assert_close(w2g[0], torch.linalg.inv(base), atol=1e-5, rtol=0)
+        # rotation is unchanged: a point 1 cm along the goal's local x axis
+        local = torch.tensor([0.01, 0.0, 1.0])
+        world = (base @ local)[:2] - base[:2, 2] + goals[1]
+        torch.testing.assert_close(w2g[1] @ torch.cat([world, torch.ones(1)]), local, atol=1e-5, rtol=0)
+
+    def test_rejects_bad_quadrants(self):
+        with self.assertRaises(ValueError):
+            self.vg._check_quadrants((0, 5), "goal_quadrants")
+        self.assertEqual(self.vg._check_quadrants([4, 1, 1], "x"), (1, 4))
+
+    def test_tip_starts_clear_the_T_and_respect_quadrants(self):
+        torch.manual_seed(1)
+        tee = torch.rand(2000, 2) * torch.tensor([0.2, 0.3]) + torch.tensor([-0.1, -0.1])  # PushT-v1 spawn box
+        offs, quads, dist = self.vg.sample_tip_offsets(tee, (1, 2, 4))
+        self.assertTrue(bool((offs.abs() <= self.vg.TIP_HALF_WIDTH).all()))
+        np.testing.assert_array_equal(self.vg.quadrant_of(offs).numpy(), quads.numpy())
+        self.assertNotIn(3, set(quads.tolist()))
+        np.testing.assert_allclose(dist.numpy(), torch.linalg.norm(offs - tee, dim=1).numpy(), atol=1e-6)
+        self.assertGreater((dist >= self.vg.TIP_CLEARANCE).float().mean().item(), 0.97)
+
+    def test_starts_independent_of_goal(self):
+        """Tip start sampling never looks at the goal, so start quadrant carries no goal information."""
+        torch.manual_seed(2)
+        goal_off, goal_q = self.vg.sample_goal_offsets(8000, (1, 2, 3, 4))
+        tee = torch.zeros(8000, 2) + torch.tensor([0.0, 0.18])  # T out of the way
+        _, tip_q, _ = self.vg.sample_tip_offsets(tee, (1, 2, 3, 4))
+        table = np.zeros((4, 4))
+        np.add.at(table, (goal_q.numpy() - 1, tip_q.numpy() - 1), 1)
+        expected = np.outer(table.sum(1), table.sum(0)) / table.sum()
+        self.assertLess(np.abs(table - expected).max() / expected.mean(), 0.15)
+
+    def test_dls_ik_reaches_position_and_orientation(self):
+        torch.manual_seed(3)
+        A = torch.randn(3, 7) * 0.3
+
+        def rz(a):
+            c, s = a.cos(), a.sin()
+            z, o = torch.zeros_like(a), torch.ones_like(a)
+            return torch.stack([torch.stack([c, -s, z], -1), torch.stack([s, c, z], -1), torch.stack([z, z, o], -1)], -2)
+
+        def fk(q):
+            return q @ A.T, rz(q[:, 6])
+
+        def jac(q):
+            J = torch.zeros(q.shape[0], 6, 7)
+            J[:, :3] = A
+            J[:, 5, 6] = 1.0
+            return J
+
+        q_true = torch.rand(16, 7) - 0.5
+        target_pos, target_rot = fk(q_true)
+        lower, upper = -torch.ones(7) * 2, torch.ones(7) * 2
+        q, err = self.vg.dls_ik(fk, jac, torch.zeros(16, 7), target_pos, target_rot, lower, upper)
+        self.assertLess(err.max().item(), 1e-3)
+        torch.testing.assert_close(fk(q)[1], target_rot, atol=1e-3, rtol=0)
+        self.assertTrue(bool(((q >= lower) & (q <= upper)).all()))
+
+    def test_initial_guess_turns_base_toward_target(self):
+        rest_q = torch.zeros(2, 7)
+        rest_pos = torch.tensor([0.3, 0.3, 0.02])
+        target = torch.tensor([[0.3, -0.3, 0.02], [0.0, 0.4, 0.02]])
+        q = self.vg.initial_guess(rest_q, rest_pos, target, -torch.ones(7) * 3, torch.ones(7) * 3)
+        torch.testing.assert_close(q[:, 0], torch.tensor([-np.pi / 2, np.pi / 4]), atol=1e-5, rtol=0)
+        self.assertTrue(bool((q[:, 1:] == 0).all()))
+
+    def test_env_class_is_none_without_maniskill(self):
+        self.assertIsNone(self.vg.PushTVariableGoalEnv)
+
+
 class OfflineTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -189,6 +306,39 @@ class OfflineTests(unittest.TestCase):
         np.testing.assert_allclose(d["actions"], expert.act(torch.as_tensor(d["obs"])).numpy(), atol=1e-6)
         meta = json.loads(out.with_suffix(".json").read_text())
         self.assertEqual([b["noise_std"] for b in meta["batches"]], [0.0, 0.3, 0.0])
+
+    def test_rollout_reports_success_by_goal_quadrant(self):
+        env = FakeGoalVecEnv(n=8)
+        res = bc.rollout(env, 5, LinearPolicy(np.ones((D_S, D_A))), seed=1)
+        self.assertEqual(sorted(res["by_goal_quadrant"]), ["Q1", "Q2", "Q3", "Q4"])
+        self.assertEqual(sum(v["episodes"] for v in res["by_goal_quadrant"].values()), 8)
+        self.assertNotIn("goal_quadrant_per_episode", res)  # only recorded when collecting
+
+    def test_collect_records_goal_quadrant_and_noise_per_episode(self):
+        expert = LinearPolicy(np.random.default_rng(3).normal(size=(D_S, D_A)))
+        out = self.dir / "goal.npz"
+        with mock.patch.object(bc, "make_vector_env", lambda n, **k: (FakeGoalVecEnv(n), 6)), \
+             mock.patch.object(bc, "load_expert", lambda *a, **k: expert):
+            bc.main(["collect", "--expert", "x.pt", "--episodes", "6", "--num-envs", "4",
+                     "--noise-std", "0", "0.2", "--seed-base", "7", "--out", str(out), "--device", "cpu"])
+        meta = json.loads(out.with_suffix(".json").read_text())
+        self.assertEqual(meta["goal_quadrant_per_episode"], [1, 2, 3, 4, 1, 2])
+        self.assertEqual(meta["tip_start_quadrant_per_episode"], [2, 3, 4, 1, 2, 3])
+        self.assertEqual(meta["batches"][0]["tip_ik_fallback_rate"], 0.0)
+        self.assertEqual(meta["noise_std_per_episode"], [0.0] * 4 + [0.2] * 2)
+        self.assertEqual(meta["env_id"], bc.VARIABLE_GOAL_ENV_ID)
+
+    def test_goal_quadrants_only_for_variable_goal_env(self):
+        bc.configure_env(bc.VARIABLE_GOAL_ENV_ID, [1, 2, 3])
+        self.assertEqual(bc.ENV_KWARGS, {"goal_quadrants": (1, 2, 3)})
+        with self.assertRaises(ValueError):
+            bc.configure_env("PushT-v1", [1, 2, 3])
+        bc.configure_env(bc.VARIABLE_GOAL_ENV_ID, None, [1, 2, 3])
+        self.assertEqual(bc.ENV_KWARGS, {"start_quadrants": (1, 2, 3)})
+        with self.assertRaises(ValueError):
+            bc.configure_env("PushT-v1", None, [4])
+        bc.configure_env(bc.VARIABLE_GOAL_ENV_ID)
+        self.assertEqual(bc.ENV_KWARGS, {})
 
     def test_released_ppo_loader_keeps_only_actor(self):
         ref = bc.ReleasedPPOActor(D_S, D_A)

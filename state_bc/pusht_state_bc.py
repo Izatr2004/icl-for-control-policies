@@ -1,15 +1,23 @@
-"""Full-state behavioral cloning (BC) teachers for ManiSkill PushT-v1.
+"""Full-state behavioral cloning (BC) teachers for ManiSkill Push-T.
+
+The default environment is PushT-VariableGoal-v1 (variable_goal_env.py): the goal T's position
+changes every episode, and policies see it in the state. Use --env-id PushT-v1 for the original
+fixed-goal task. --goal-quadrants limits which goal quadrants are sampled.
 
 Subcommands (run with the ManiSkill training interpreter):
 
+    ppo      Run ManiSkill's state PPO baseline (examples/baselines/ppo/ppo.py) with the
+             variable-goal environment registered. Extra arguments go to ppo.py.
     audit    Inspect the state observation and action spaces; write observation_contract.json.
+    check-env  Verify the success test follows each episode's goal (variable-goal env).
     prepare  Convert a replayed state-mode demo file (.h5 + .json) into train/validation
              transition files, split by whole episode.
     collect  Roll out a driver policy (the expert, or a BC checkpoint for DAgger) and label
              every visited state with the expert's deterministic action.
     train    Train one MLP BC teacher on one or more transition files, evaluating closed-loop
              success on validation seeds.
-    eval     Evaluate a BC checkpoint, or the released PPO expert, on a seed range.
+    eval     Evaluate a BC checkpoint, or a PPO checkpoint (--ppo), on a seed range, with
+             success broken down by goal quadrant.
 
 Transition files are .npz with obs [N, d_s], actions [N, d_a] and episode_ids [N],
 plus a .json sidecar describing where they came from.
@@ -30,7 +38,12 @@ import numpy as np
 import torch
 from torch import nn
 
-ENV_ID = "PushT-v1"
+VARIABLE_GOAL_ENV_ID = "PushT-VariableGoal-v1"
+ENV_ID = VARIABLE_GOAL_ENV_ID  # set by configure_env() from --env-id
+ENV_KWARGS = {}                # set by configure_env() from --goal-quadrants / --start-quadrants
+# Per-episode records exposed by PushT-VariableGoal-v1 and saved with collected data.
+EPISODE_RECORDS = ("goal_quadrant", "goal_xy", "tip_start_quadrant", "tip_start_xy", "tee_start_quadrant",
+                   "tip_ik_fallback")
 OBS_MODE = "state"
 CONTROL_MODE = "pd_joint_delta_pos"
 SIM_BACKEND = "physx_cuda"
@@ -236,6 +249,10 @@ def rollout(env, max_steps, driver, seed, labeler=None, noise_std=0.0, generator
     obs, _ = env.reset(seed=seed)
     n = obs.shape[0]
     device = obs.device
+    base = getattr(env, "base_env", None)
+    # Per-episode start/goal records from PushT-VariableGoal-v1, read right after reset.
+    records = {name: getattr(base, name).clone() for name in EPISODE_RECORDS if hasattr(base, name)}
+    quadrant = records.get("goal_quadrant")
     success_once = torch.zeros(n, dtype=torch.bool, device=device)
     first_success = torch.full((n,), -1, dtype=torch.long, device=device)
     obs_buf, label_buf = [], []
@@ -262,6 +279,17 @@ def rollout(env, max_steps, driver, seed, labeler=None, noise_std=0.0, generator
         "success_at_end": success.float().mean().item(),
         "mean_steps_to_first_success": steps.mean().item() if len(steps) else None,
     }
+    if quadrant is not None:
+        result["by_goal_quadrant"] = {
+            f"Q{q}": {"episodes": int(m.sum()),
+                      "success_once": success_once[m].float().mean().item(),
+                      "success_at_end": success[m].float().mean().item()}
+            for q in range(1, 5) if (m := quadrant == q).any()}
+    if "tip_ik_fallback" in records:
+        result["tip_ik_fallback_rate"] = records["tip_ik_fallback"].float().mean().item()
+    if labeler is not None:
+        for name, value in records.items():
+            result[f"{name}_per_episode"] = value.cpu().tolist()
     if labeler is None:
         return result
     return result, torch.stack(obs_buf, 1).numpy(), torch.stack(label_buf, 1).numpy()
@@ -369,12 +397,43 @@ def train(args):
 # Simulator: audit, evaluation, collection
 # --------------------------------------------------------------------------------------
 
+def configure_env(env_id, goal_quadrants=None, start_quadrants=None):
+    """Select the environment for this process (registration happens in make_env)."""
+    global ENV_ID, ENV_KWARGS
+    ENV_ID, ENV_KWARGS = env_id, {}
+    if env_id == VARIABLE_GOAL_ENV_ID:
+        if goal_quadrants:
+            ENV_KWARGS["goal_quadrants"] = tuple(goal_quadrants)
+        if start_quadrants:
+            ENV_KWARGS["start_quadrants"] = tuple(start_quadrants)
+    elif goal_quadrants or start_quadrants:
+        raise ValueError("--goal-quadrants and --start-quadrants only apply to " + VARIABLE_GOAL_ENV_ID)
+
+
 def make_env(num_envs, obs_mode=OBS_MODE, **kwargs):
     import gymnasium as gym
     import mani_skill.envs  # noqa: F401  (registers environments)
 
+    if ENV_ID == VARIABLE_GOAL_ENV_ID:
+        import variable_goal_env  # registers PushT-VariableGoal-v1
+        if variable_goal_env.PushTVariableGoalEnv is None:
+            raise ImportError("variable_goal_env could not import ManiSkill; the environment is not registered")
     return gym.make(ENV_ID, num_envs=num_envs, obs_mode=obs_mode, control_mode=CONTROL_MODE,
-                    sim_backend=SIM_BACKEND, render_mode="rgb_array", **kwargs)
+                    sim_backend=SIM_BACKEND, render_mode="rgb_array", **ENV_KWARGS, **kwargs)
+
+
+def run_ppo(argv):
+    """Run ManiSkill's ppo.py in this process after registering the variable-goal environment.
+    ppo.py writes runs/<exp-name>/ under the current directory."""
+    import runpy
+    import sys
+
+    p = argparse.ArgumentParser(prog="pusht_state_bc.py ppo", allow_abbrev=False)
+    p.add_argument("--script", required=True, help="path to ManiSkill examples/baselines/ppo/ppo.py")
+    known, rest = p.parse_known_args(argv)
+    import variable_goal_env  # noqa: F401  (registers PushT-VariableGoal-v1 for ppo.py's gym.make)
+    sys.argv = [known.script] + rest
+    runpy.run_path(known.script, run_name="__main__")
 
 
 def episode_length(env):
@@ -433,7 +492,7 @@ def audit(args):
             raise AssertionError("State observation lacks obj_pose; this is not the full-state setting")
         space = env.unwrapped.single_action_space
         contract = {
-            "env_id": ENV_ID, "obs_mode": OBS_MODE, "control_mode": CONTROL_MODE, "sim_backend": SIM_BACKEND,
+            "env_id": ENV_ID, "env_kwargs": {k: list(v) for k, v in ENV_KWARGS.items()}, "obs_mode": OBS_MODE, "control_mode": CONTROL_MODE, "sim_backend": SIM_BACKEND,
             "mani_skill_version": getattr(mani_skill, "__version__", "unknown"),
             "state_dim": width, "state_fields_in_order": offsets,
             "action_dim": int(np.prod(space.shape)),
@@ -451,6 +510,79 @@ def audit(args):
         print(json.dumps(contract, indent=2))
     finally:
         env.close()
+
+
+def check_env(args):
+    """Check the success test against each episode's own goal, without stepping physics.
+
+    Puts a stand-in T exactly on every episode's goal pose and runs the environment's overlap
+    computation: all must count as success. Then shifts it 5 cm: none may. With PushT-v1's single
+    fixed goal transform, varied goals would fail the first check. Also reports goal ranges and quadrants.
+    """
+    import types
+
+    env = make_env(args.num_envs)
+    try:
+        env.reset(seed=args.seed)
+        base = env.unwrapped
+        goal_p, goal_q = base.goal_tee.pose.p.clone(), base.goal_tee.pose.q.clone()
+        real_tee = base.tee
+
+        def overlap(p):
+            base.tee = types.SimpleNamespace(pose=types.SimpleNamespace(p=p, q=goal_q))
+            try:
+                return base.pseudo_render_intersection()
+            finally:
+                base.tee = real_tee
+
+        at_goal = overlap(goal_p)
+        shifted = goal_p.clone()
+        shifted[:, 0] += 0.05
+        off_goal = overlap(shifted)
+        thresh = base.intersection_thresh
+        quadrant = getattr(base, "goal_quadrant", None)
+        report = {
+            "env_id": ENV_ID, "num_envs": args.num_envs,
+            "goal_x_range": [goal_p[:, 0].min().item(), goal_p[:, 0].max().item()],
+            "goal_y_range": [goal_p[:, 1].min().item(), goal_p[:, 1].max().item()],
+            "goal_quadrant_counts": ({f"Q{q}": int((quadrant == q).sum()) for q in range(1, 5)}
+                                     if quadrant is not None else None),
+            "overlap_with_T_on_goal_min": at_goal.min().item(),
+            "overlap_with_T_shifted_5cm_max": off_goal.max().item(),
+            "intersection_thresh": thresh,
+        }
+        passed = bool((at_goal >= thresh).all() and (off_goal < thresh).all())
+        if hasattr(base, "tip_start_xy") and getattr(base, "random_tip_start", False):
+            # Where the stick tip actually is after reset, versus where IK placed it.
+            tcp_xy = base.agent.tcp.pose.p[:, :2]
+            placed = ~base.tip_ik_fallback
+            gap = torch.linalg.norm(tcp_xy - base.tip_start_xy, dim=1)
+            tee_dist = torch.linalg.norm(tcp_xy - base.tee.pose.p[:, :2], dim=1)
+            tip_q = base.tip_start_quadrant
+            report.update({
+                "tip_x_range": [tcp_xy[:, 0].min().item(), tcp_xy[:, 0].max().item()],
+                "tip_y_range": [tcp_xy[:, 1].min().item(), tcp_xy[:, 1].max().item()],
+                "tip_start_quadrant_counts": {f"Q{q}": int((tip_q == q).sum()) for q in range(1, 5)},
+                "tee_start_quadrant_counts": {f"Q{q}": int((base.tee_start_quadrant == q).sum()) for q in range(1, 5)},
+                "tip_ik_fallback_rate": base.tip_ik_fallback.float().mean().item(),
+                "tip_ik_error_max_m": base.tip_ik_error.max().item(),
+                "tip_vs_ik_gap_max_m": gap[placed].max().item() if placed.any() else None,
+                "tip_height_range_m": [base.agent.tcp.pose.p[:, 2].min().item(), base.agent.tcp.pose.p[:, 2].max().item()],
+                "tip_to_tee_min_m": tee_dist.min().item(),
+                "goal_vs_tip_quadrant_agreement": (tip_q == quadrant).float().mean().item() if quadrant is not None else None,
+            })
+            # Placement must match the simulator's own kinematics (catches a wrong base offset or chain)
+            # and fall back rarely.
+            passed = passed and report["tip_ik_fallback_rate"] <= 0.05 and (
+                report["tip_vs_ik_gap_max_m"] is None or report["tip_vs_ik_gap_max_m"] < 0.02)
+        report["passed"] = passed
+    finally:
+        env.close()
+    print(json.dumps(report, indent=2))
+    if args.out:
+        Path(args.out).write_text(json.dumps(report, indent=2))
+    if not report["passed"]:
+        raise SystemExit("Environment check FAILED: success is not measured against each episode's goal.")
 
 
 class Evaluator:
@@ -479,7 +611,7 @@ def evaluate(args):
     video_dir = Path(args.video_dir) if args.video_dir else None
     evaluator = Evaluator(args.episodes, device, video_dir=video_dir)
     try:
-        if args.released_ppo:
+        if args.ppo:
             policy = load_expert(args.checkpoint, evaluator.env, device)
         else:
             policy = load_policy(args.checkpoint, device)
@@ -508,13 +640,17 @@ def collect(args):
         noise_levels = args.noise_std or [0.0]
         gen = torch.Generator(device=device).manual_seed(args.seed_base)
         batches = math.ceil(args.episodes / args.num_envs)
-        all_obs, all_labels, per_batch = [], [], []
+        all_obs, all_labels, per_batch, all_noise = [], [], [], []
+        per_episode = {}
         for b in range(batches):
             sigma = noise_levels[b % len(noise_levels)]
             res, obs, labels = rollout(env, max_steps, driver, seed=args.seed_base + b,
                                        labeler=expert, noise_std=sigma, generator=gen)
             all_obs.append(obs)
             all_labels.append(labels)
+            for key in [k for k in res if k.endswith("_per_episode")]:
+                per_episode.setdefault(key, []).extend(res.pop(key))
+            all_noise += [sigma] * obs.shape[0]
             per_batch.append(res)
             print(f"batch {b + 1}/{batches}  noise {sigma:.2f}  driver success_once {res['success_once']:.0%}  "
                   f"success_at_end {res['success_at_end']:.0%}", flush=True)
@@ -526,13 +662,17 @@ def collect(args):
     meta = dict(
         driver=args.driver, driver_checkpoint=args.driver_checkpoint or None, expert=str(args.expert),
         labels="expert deterministic action, clipped to [-1, 1]", noise_std_cycle=noise_levels,
+        env_id=ENV_ID, env_kwargs={k: list(v) for k, v in ENV_KWARGS.items()},
         seed_base=args.seed_base, num_envs=args.num_envs, steps_per_episode=int(T), batches=per_batch,
         driver_success_once=float(np.mean([r["success_once"] for r in per_batch])),
         driver_success_at_end=float(np.mean([r["success_at_end"] for r in per_batch])),
+        noise_std_per_episode=all_noise[:n],
     )
+    for key, values in per_episode.items():
+        meta[key] = values[:n]
     meta = save_transitions(args.out, obs.reshape(n * T, -1), labels.reshape(n * T, -1),
                             np.repeat(np.arange(n), T), meta)
-    print(json.dumps({k: v for k, v in meta.items() if k != "batches"}, indent=2))
+    print(json.dumps({k: v for k, v in meta.items() if not k.endswith("per_episode") and k != "batches"}, indent=2))
 
 
 # --------------------------------------------------------------------------------------
@@ -540,12 +680,30 @@ def collect(args):
 # --------------------------------------------------------------------------------------
 
 def main(argv=None):
+    import sys
+
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] == "ppo":
+        return run_ppo(argv[1:])
+
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("ppo", help="run ManiSkill ppo.py on the variable-goal env (see run_ppo)")
     default_device = "cuda" if torch.cuda.is_available() else "cpu"
+    env_opts = argparse.ArgumentParser(add_help=False)
+    env_opts.add_argument("--env-id", default=VARIABLE_GOAL_ENV_ID)
+    env_opts.add_argument("--goal-quadrants", type=int, nargs="+", default=None,
+                          help="goal quadrants to sample (variable-goal env only); default all four")
+    env_opts.add_argument("--start-quadrants", type=int, nargs="+", default=None,
+                          help="stick-tip start quadrants to sample (variable-goal env only); default all four")
 
-    a = sub.add_parser("audit")
+    a = sub.add_parser("audit", parents=[env_opts])
     a.add_argument("--out", required=True)
+
+    ce = sub.add_parser("check-env", parents=[env_opts])
+    ce.add_argument("--num-envs", type=int, default=256)
+    ce.add_argument("--seed", type=int, default=0)
+    ce.add_argument("--out", default="")
 
     pr = sub.add_parser("prepare")
     pr.add_argument("--h5", required=True)
@@ -554,8 +712,8 @@ def main(argv=None):
     pr.add_argument("--split-seed", type=int, default=0)
     pr.add_argument("--max-episodes", type=int, default=0, help="0 = use all episodes")
 
-    c = sub.add_parser("collect")
-    c.add_argument("--expert", required=True, help="released PPO checkpoint used for labels")
+    c = sub.add_parser("collect", parents=[env_opts])
+    c.add_argument("--expert", required=True, help="PPO checkpoint (ManiSkill ppo.py format) used for labels")
     c.add_argument("--driver", choices=("expert", "bc"), default="expert")
     c.add_argument("--driver-checkpoint", default="", help="BC checkpoint when --driver bc")
     c.add_argument("--episodes", type=int, required=True)
@@ -566,7 +724,7 @@ def main(argv=None):
     c.add_argument("--out", required=True)
     c.add_argument("--device", default=default_device)
 
-    t = sub.add_parser("train")
+    t = sub.add_parser("train", parents=[env_opts])
     t.add_argument("--train-data", nargs="+", required=True)
     t.add_argument("--val-data", required=True)
     t.add_argument("--out", required=True)
@@ -584,9 +742,10 @@ def main(argv=None):
     t.add_argument("--val-seed", type=int, default=1001)
     t.add_argument("--device", default=default_device)
 
-    e = sub.add_parser("eval")
+    e = sub.add_parser("eval", parents=[env_opts])
     e.add_argument("--checkpoint", required=True)
-    e.add_argument("--released-ppo", action="store_true", help="checkpoint is ManiSkill's released PPO .pt")
+    e.add_argument("--ppo", "--released-ppo", dest="ppo", action="store_true",
+                   help="checkpoint is a ManiSkill ppo.py checkpoint (released or our own)")
     e.add_argument("--episodes", type=int, default=100)
     e.add_argument("--seed", type=int, default=2001)
     e.add_argument("--out", default="")
@@ -596,7 +755,10 @@ def main(argv=None):
     args = p.parse_args(argv)
     if args.cmd == "collect" and args.driver == "bc" and not args.driver_checkpoint:
         p.error("--driver bc needs --driver-checkpoint")
-    {"audit": audit, "prepare": prepare, "collect": collect, "train": train, "eval": evaluate}[args.cmd](args)
+    if hasattr(args, "env_id"):
+        configure_env(args.env_id, args.goal_quadrants, args.start_quadrants)
+    {"audit": audit, "check-env": check_env, "prepare": prepare, "collect": collect, "train": train,
+     "eval": evaluate}[args.cmd](args)
 
 
 if __name__ == "__main__":

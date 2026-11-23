@@ -213,6 +213,34 @@ so check it again when distilling a different expert.
 | 2026-11-22 | Accept run 2's round 2 checkpoint as the first full-state BC teacher | 98% / 78% on test seeds, matching the expert's 100% / 72% |
 | 2026-11-22 | Treat DAgger as optional for future expert-distilled BC teachers | Run 2 round 0 (no DAgger) already matched the expert; later rounds were within noise |
 | 2026-11-22 | **v1 of the project focuses on out-of-distribution tests**; Garg-style parameterized policy families are deferred | Group decision. Izat is updating the repo's project context to match; BC work waits for that update. |
+| 2026-11-23 | **v1 design adopted: variable-goal Push-T** (`CODEX_CONTEXT.md` on main, commit 9915e87) | Teachers are goal-conditioned (see goal) and trained on goals in Q1–Q4. The transformer never sees the goal and trains on Q1–Q3 goals only; the OOD test is Q4 goals. Hidden goal makes context necessary. |
+
+## v1 plan: variable-goal Push-T (from `CODEX_CONTEXT.md`, 2026-11-23)
+
+**Question:** can a frozen transformer infer an unfamiliar Push-T goal from demonstrations and control the robot to it,
+without goal coordinates or weight updates? Target position varies; target orientation stays fixed for now.
+
+**What this means for the BC teacher:**
+- **Goal-conditioned BC:** same idea as run 2, but the expert is a goal-conditioned PPO teacher (Jimmy) trained on random
+  starts and goals in Q1–Q4. The context calls the pair "PPO and distilled BC". The released fixed-goal expert no longer applies.
+- The BC input keeps `extra/goal_pos` (indices 21:24), which now varies. The current normalization only centers it, because it was constant in runs 1–2; with varying goals it will be scaled normally.
+- **Validate per quadrant:** report success separately for goals in Q1, Q2, Q3 and Q4, then freeze the teacher before any transformer data is collected.
+- **Goal-estimate baseline (likely BC work):** a goal-conditioned BC trained only on Q1–Q3 source data, given a goal estimated
+  from the final block pose of a successful demonstration.
+- **Transformer data:** per prompt, one expert and one goal, several episodes from different starts; support and query from different episodes;
+  teacher actions as labels. Transformer inputs drop the goal fields; robot state and block pose stay.
+
+**Environment work needed first (shared by everyone).** In ManiSkill v3.0.1, `PushT-v1` hard-codes the goal:
+- `goal_offset` and `goal_z_rot` are class constants. `_initialize_episode` always places the goal T there.
+- `world_to_goal_trans`, which the **success check** uses, is computed once in `_load_scene` as a single matrix.
+  A variable goal needs a per-environment transform, recomputed at every reset. Otherwise success is measured against the old goal.
+- The dense reward's translation term already reads the goal T's live pose, but its rotation term uses `goal_z_rot` (fine while orientation is fixed).
+- Start positions: the T spawns in a fixed box relative to the goal, and the stick tip starts at a fixed point.
+  The plan randomizes both across Q1–Q4.
+- Episodes are 100 steps; farther start-to-goal distances may need a longer limit.
+
+**Open questions:** where the quadrant origin is and what the reachable sampling region is; who writes the shared variable-goal environment;
+when Jimmy's goal-conditioned PPO will be ready; whether the goal-estimate baseline is part of the BC work.
 
 ## Ideas and open questions
 
@@ -323,3 +351,4 @@ examples many w fit the data, and the best predictor averages over them. For pol
 - **2026-11-22:** Run 2: added `collect` (expert rollouts with action noise, and DAgger labeling), multi-file training,
   per-source transition files, and the run 2 notebook. Offline tests extended to 12 (rollout and collection logic use a fake environment).
 - **2026-11-22:** Run 2 completed: 98% / 78% test success (expert 100% / 72%). Results, analysis and proposed next steps recorded above.
+- **2026-11-23:** Adopted the variable-goal v1 design from `CODEX_CONTEXT.md`; recorded what it means for the BC teacher and the environment changes needed.

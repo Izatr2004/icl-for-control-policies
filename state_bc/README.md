@@ -294,6 +294,47 @@ makes teachers robust to varied starts, and enables start hold-outs.
 - Per-quadrant success of the expert and BC teacher: any weak quadrant matters, especially Q4, since the transformer will be tested there.
 - BC vs expert gap, as in run 2.
 
+### Run 3 result: PPO expert did not learn the task (2026-11-23)
+**Drive session:** `state_bc/20261123T194232Z_run3_variable_goal`. PPO trained the full 50M transitions at roughly 8,000–10,000 SPS
+(about 1.5 hours). The notebook's 80% gate then stopped the run before BC, as designed.
+
+Final checkpoints on 200 validation episodes (seed 1001), success-once / success-at-end:
+
+| Checkpoint | Overall | Q1 | Q2 | Q3 | Q4 |
+|---|---|---|---|---|---|
+| ckpt_2976 | 6% / 1% | 7% / 2% | 12% / 0% | 4% / 0% | 4% / 2% |
+| ckpt_3001 | 6% / 3% | 7% / 4% | 10% / 5% | 5% / 2% | 4% / 2% |
+| **ckpt_3026** (selected) | **11% / 9%** | 16% / 12% | 10% / 7% | 9% / 7% | 9% / 7% |
+| ckpt_3051 | 4% / 1% | 2% / 0% | 5% / 2% | 5% / 2% | 4% / 2% |
+| final_ckpt | 4% / 2% | 7% / 2% | 2% / 0% | 5% / 4% | 4% / 2% |
+
+ppo.py's own 16-episode evaluations first showed a success (0.0625) partway through training.
+
+**Reading:** the expert is far from usable (needs ≥80%). Success is low in every quadrant alike, so no single quadrant is the problem.
+The last checkpoints hover at 4–11% rather than climbing, though 200-episode evaluations are noisy at this level.
+Most likely the task became much harder than PushT-v1 (moving goals **and** random tip starts at once), and 50M transitions from random
+weights is not enough; PushT-v1's released expert itself comes from ManiSkill's 4,096-environment `ppo_fast.py` setup.
+A bug in the new environment is less likely: `check-env` passed (success check follows each goal; tip placement matches the simulator).
+Not yet ruled out: an episode length of 100 steps being too short for far starts, and the reward shaping not guiding the stick to distant T positions.
+
+### Run 3b plan: warm-started PPO (built 2026-11-23, not yet run)
+Same notebook (`Train_PushT_VariableGoal_PPO_BC.ipynb`, rebuilt), session label `run3b_warmstart`. Only the PPO step changes:
+
+| Setting | Run 3 | Run 3b | Why |
+|---|---|---|---|
+| PPO initial weights | random | **ManiSkill's released fixed-goal expert** (`ppo_pd_joint_delta_pos_ckpt.pt`), loaded with ppo.py's `--checkpoint` | It already pushes the T well from random T starts, with the same 31-number state (`goal_pos` included) and controller; it only has to learn that the goal moves and the tip starts elsewhere |
+| Parallel environments | 1,024 | **4,096** | ManiSkill's own state Push-T baseline setting; more data per update. Changes the batch to 65,536 transitions (2,048 per minibatch) |
+| Learning rate | 3e-4 | **1e-4** | Fine-tuning; a full-size step early could erase the pushing skill. A judgment call, not tuned |
+| Transitions | 50M | 50M (unchanged) | |
+| New measurement | | The released expert's success on the variable-goal task **before** fine-tuning (200 validation episodes), saved as `released_expert_on_variable_goal.json` | Shows how much of the task it already solves |
+
+Everything else (environment, `check-env`, the 80% gate, expert data, BC, evaluation) is unchanged. Considered but not included: a diagnostic run with
+fixed tip starts to see which change made run 3 hard; worth adding if 3b also stalls.
+
+**Expected time (estimate, not measured):** install about 8 minutes; checks and the baseline evaluation a few minutes; PPO 35–90 minutes depending on
+speed with 4,096 environments (run 3 managed 8,000–10,000 SPS with 1,024); expert selection, data collection, BC training and testing about 20–25 minutes.
+Roughly **1¼ to 2 hours** in total.
+
 ### Pre-run assessment (2026-11-23, before running)
 The overall design is sound: the hidden goal forces context use, and Q4 goals test generalization. Risks, most likely first:
 1. **PPO may not reach 80% in 50M transitions.** The task is now harder (moving goals and varied tip starts), and the fixed-goal
@@ -359,6 +400,7 @@ pushing strategy changes with the target angle (which way and how far to turn th
 | 2026-11-23 | Default quadrants: goals within ±10 cm of PushT-v1's goal, quadrants by sign of the offset | No group definition yet; easy to change |
 | 2026-11-23 | No DAgger for the variable-goal BC teacher | Run 2 showed it added nothing measurable |
 | 2026-11-23 | Randomize the stick-tip start (±15 cm, by quadrant, independent of the goal) | `CODEX_CONTEXT.md` puts starts in Q1–Q4; also enables start hold-outs. Not an anti-cheating measure: the hidden goal is. |
+| 2026-11-23 | Run 3b: warm-start PPO from the released fixed-goal expert, 4,096 envs, learning rate 1e-4 | Run 3's from-scratch PPO stalled at 4–11%; Jimmy's PPO status unknown, so train now rather than wait |
 
 ## v1 plan: variable-goal Push-T (from `CODEX_CONTEXT.md`, 2026-11-23)
 
@@ -517,3 +559,9 @@ examples many w fit the data, and the best predictor averages over them. For pol
   (tip sampling and clearance, start/goal independence, IK solver on a test arm, initial guess). Notebook rebuilt.
 - **2026-11-23:** First run 3 launch: PPO at about 6,700 SPS. Stopped. Replaced per-reset IK with a one-time 64 × 64 lookup table
   (`tip_grid_offsets`, `grid_index`, `choose_tip_cells`, `_build_ik_table`); `check-env` reports grid reachability. Offline tests: 25. Notebook rebuilt.
+- **2026-11-23:** Second run 3 launch (with the lookup table): about **8,000 SPS** five minutes in, about 20% faster than 6,700. The per-reset IK was
+  only part of the cost; most of it is the environment step itself (physics plus PushT's per-step pseudo-render success check). At this speed,
+  50M transitions take about 1 hour 45 minutes. Possible future speed-ups: more parallel environments (ManiSkill's own state Push-T baseline uses 4,096
+  with `ppo_fast.py`), which also changes PPO's batch size, so it is a training change, not just a speed change.
+- **2026-11-23:** Run 3 PPO stalled at 4–11% success after 50M transitions (80% gate stopped before BC). Notebook updated for run 3b: warm start
+  from the released expert, 4,096 envs, learning rate 1e-4, and a baseline evaluation of the released expert on moving goals.

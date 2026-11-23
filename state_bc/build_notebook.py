@@ -1,4 +1,4 @@
-"""Build notebooks/Train_PushT_VariableGoal_PPO_BC.ipynb (run 3) from the state_bc modules.
+"""Build notebooks/Train_PushT_VariableGoal_PPO_BC.ipynb (run 3b: warm-started PPO) from the state_bc modules.
 
 The notebook embeds pusht_state_bc.py and variable_goal_env.py with %%writefile so it stays
 self-contained in Colab. Edit those files or the cell text below, then rerun:
@@ -22,7 +22,12 @@ md = lambda s: cells.append(new_markdown_cell(s.strip()))  # noqa: E731
 code = lambda s: cells.append(new_code_cell(s.strip()))  # noqa: E731
 
 md("""
-# Push-T variable goal, run 3: goal-conditioned PPO expert → distilled BC teacher
+# Push-T variable goal, run 3b: warm-started goal-conditioned PPO expert → distilled BC teacher
+
+**Run 3b.** Run 3 trained PPO from random weights and stalled at about 4–11% success after 50M transitions, so its 80% gate
+stopped before BC. This run changes only the PPO step: it **starts from ManiSkill's released fixed-goal Push-T expert**
+(same 31-number state, same joint controller), which already knows how to push the T, and uses **4,096 parallel
+environments** as ManiSkill's own Push-T baseline does, with a lower learning rate for fine-tuning. See `state_bc/README.md`.
 
 v1 of the project (`CODEX_CONTEXT.md`) needs teachers that can push the T to **any goal position**, with the goal
 in their observation. The transformer will later see demos but never the goal, and will train on Q1–Q3 goals only.
@@ -33,20 +38,21 @@ This notebook makes the full-state teachers:
    Q3 (−x,−y), Q4 (+x,−y). Goal rotation fixed. The success check is fixed to use each episode's own goal.
    **The stick tip also starts at a random spot** (±15 cm of the same centre, away from the T), placed by inverse
    kinematics. The movable T spawns as in PushT-v1. Starts are independent of the goal. **Teachers train on all four quadrants.**
-2. **Goal-conditioned PPO expert**, trained here with ManiSkill's state PPO baseline (Jimmy's PPO can replace it later).
+2. **Goal-conditioned PPO expert**, fine-tuned here from the released fixed-goal expert with ManiSkill's state PPO baseline
+   (Jimmy's PPO can replace it later through `PPO_CHECKPOINT`).
 3. **BC teacher distilled from that expert:** noisy expert rollouts plus one training run. **No DAgger** (run 2 showed it was not needed).
 4. **Per-quadrant validation and test** of both teachers, then both are saved under `teachers/`.
 
 | Setting | Value |
 |---|---|
 | Observation / controller | `obs_mode="state"` (31 numbers, now including a varying `goal_pos`), `pd_joint_delta_pos` (7) |
-| PPO | ManiSkill `ppo.py`: 1,024 envs, 16 steps per rollout, 32 minibatches, 8 epochs, γ = 0.99, 50M transitions, seed 1 |
+| PPO | ManiSkill `ppo.py`, **warm start from the released `ppo_pd_joint_delta_pos_ckpt.pt`**: 4,096 envs, 16 steps per rollout, 32 minibatches, 8 epochs, γ = 0.99, learning rate 1e-4, 50M transitions, seed 1 |
 | BC teacher | MLP 2 × 256 ReLU, tanh output, MSE, Adam 3e-4 cosine, batch 1024, 200k iterations |
 | Simulator | ManiSkill v3.0.1 (commit `a4a4f92`), GPU physics |
 | Seeds | expert data 100,000+; BC validation data 300,000+; closed-loop validation 1001; test 5001 (once, at the end) |
 
 Select **Runtime → Change runtime type → L4 GPU** and run the cells in order. Upload only this notebook.
-Outputs go to `MyDrive/182_final_project/state_bc/<session>/`. PPO is the long step (roughly 30–60 minutes, not yet measured).
+Outputs go to `MyDrive/182_final_project/state_bc/<session>/`. PPO is the long step. Estimated total: about 1–2 hours, depending on PPO speed with 4,096 environments (not yet measured).
 """)
 
 code("""
@@ -59,14 +65,16 @@ WORK_ROOT = Path("/content/pusht_state_bc")
 WORK_ROOT.mkdir(parents=True, exist_ok=True)
 USE_GOOGLE_DRIVE = True
 DRIVE_SUBDIR = "182_final_project/state_bc"
-RUN_LABEL = "run3_variable_goal"
+RUN_LABEL = "run3b_warmstart"
 ENV_ID = "PushT-VariableGoal-v1"
 
-# PPO expert (ManiSkill's state baseline settings, as in Neil's notebook but state observations)
+# PPO expert: fine-tuned from ManiSkill's released fixed-goal expert (run 3b), ManiSkill's Push-T env count
 PPO_CHECKPOINT = ""          # set to an existing ppo.py checkpoint path to skip PPO training
+PPO_WARM_START = True        # start from the released fixed-goal expert instead of random weights
+PPO_LR = 1e-4                # run 3 used 3e-4 from scratch; lower to avoid erasing the pushing skill early
 PPO_SEED = 1
 PPO_TIMESTEPS = 50_000_000
-PPO_NUM_ENVS = 1024
+PPO_NUM_ENVS = 4096          # run 3 used 1,024; ManiSkill's state Push-T baseline uses 4,096
 PPO_NUM_STEPS = 16
 PPO_MINIBATCHES = 32
 PPO_EPOCHS = 8
@@ -218,18 +226,32 @@ run([TRAIN_PY, BC, "check-env", "--env-id", ENV_ID, "--num-envs", 256, "--out", 
 """)
 
 md("""
-## 5. Train the goal-conditioned PPO expert
+## 5. Train the goal-conditioned PPO expert (warm start)
 
-ManiSkill's `ppo.py`, unchanged, run with the variable-goal environment registered. Only evaluation lines are shown;
+Downloads ManiSkill's released fixed-goal Push-T expert and fine-tunes it on the variable-goal task with ManiSkill's
+`ppo.py`, unchanged, run with the variable-goal environment registered (`--checkpoint` loads the released weights before
+training). The first evaluations show how well the fixed-goal expert already does on moving goals. Only evaluation lines are shown;
 everything is in `notebook.log`. Checkpoints land in `ppo/runs/<name>/`. Set `PPO_CHECKPOINT` in the config cell to skip this.
 `eval_success_once_mean` is ppo.py's own 16-episode evaluation, a rough progress signal.
 """)
 code("""
 PPO_DIR = OUTPUT_ROOT / "ppo"
 PPO_DIR.mkdir(exist_ok=True)
-PPO_RUN = f"ppo_variable_goal_seed{PPO_SEED}"
+PPO_RUN = f"ppo_variable_goal_warmstart_seed{PPO_SEED}" if PPO_WARM_START else f"ppo_variable_goal_seed{PPO_SEED}"
+warm_start = []
+if PPO_WARM_START and not PPO_CHECKPOINT:
+    import urllib.request
+    RELEASED = WORK_ROOT / "ppo_pd_joint_delta_pos_ckpt.pt"
+    if not RELEASED.exists():
+        urllib.request.urlretrieve("https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/main/"
+                                   "demos/PushT-v1/rl/ppo_pd_joint_delta_pos_ckpt.pt", RELEASED)
+    shutil.copy2(RELEASED, PPO_DIR / "released_fixed_goal_expert.pt")
+    # Baseline: the fixed-goal expert on moving goals, before any fine-tuning.
+    run([TRAIN_PY, BC, "eval", "--env-id", ENV_ID, "--checkpoint", RELEASED, "--ppo", "--episodes", 200,
+         "--seed", 1001, "--out", OUTPUT_ROOT / "released_expert_on_variable_goal.json"], show=r"success_(once|at_end)")
+    warm_start = ["--checkpoint", RELEASED]
 if not PPO_CHECKPOINT:
-    run([TRAIN_PY, BC, "ppo", "--script", PPO_SCRIPT,
+    run([TRAIN_PY, BC, "ppo", "--script", PPO_SCRIPT, *warm_start, "--learning-rate", PPO_LR,
          "--env-id", ENV_ID, "--control-mode", "pd_joint_delta_pos", "--exp-name", PPO_RUN, "--seed", PPO_SEED,
          "--num-envs", PPO_NUM_ENVS, "--num-steps", PPO_NUM_STEPS, "--num-minibatches", PPO_MINIBATCHES,
          "--update-epochs", PPO_EPOCHS, "--gamma", 0.99, "--total-timesteps", PPO_TIMESTEPS,

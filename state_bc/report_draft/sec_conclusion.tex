@@ -1,0 +1,29 @@
+% Conclusion. Part of the team paper; included by main.tex.
+\section{Discussion and conclusion}
+\label{sec:conclusion}
+
+We moved the in-context learning setup of Garg et al.\ from function regression to closed-loop control. A 9.75M-parameter GPT-2,
+trained only to predict a teacher's next action from demonstrations, infers a hidden goal from one to eight demonstrations and
+controls the robot as well as goal-seeing teachers on new goals from the training distribution. Wrong-goal and no-demonstration
+controls on identical initial states show that this success comes from the context, not from a prior over likely goals.
+
+\textbf{What we learn.}
+\begin{itemize}
+  \item \emph{The context acts as a strong control channel.} With demonstrations of another goal, the model confidently pursues that
+    goal, and its wrong-goal error grew throughout training. A good demonstration steers it reliably, and so does a misleading one.
+  \item \emph{Closed-loop evaluation is necessary.} A pilot model already preferred correct demonstrations offline but scored 0\%
+    in closed loop. Teacher-forced error predicts closed-loop behavior only once it is small.
+  \item \emph{Out of distribution, coarse behavior transfers before precise behavior.} On held-out goals the model still pushes the
+    T to the goal, but it often fails at the fine corrections needed to keep it there, and more demonstrations do not fix this.
+\end{itemize}
+
+\textbf{Limitations and next steps.} The goal here is a 2-D position that a successful demonstration nearly reveals in its final
+state, so the inference required is simple. A baseline that reads the goal from the final T pose will show how much more the
+transformer does \inprogress{goal-estimate baseline}. The main results come from one training seed, and an independent run shows
+that success-at-end on held-out goals varies widely across seeds \inprogress{seeds 1--2}. Next experiments:
+\begin{itemize}
+  \item query states from noisy teacher rollouts with clean labels, aimed at the holding failure;
+  \item a sweep over the number of training goals, to locate where in-context generalization emerges~\cite{raventos2023pretraining};
+  \item hidden variables that the final state does not reveal, such as the T's mass or friction, or the goal orientation;
+  \item the camera-observation teachers.
+\end{itemize}

@@ -1,0 +1,74 @@
+% Team paper draft. Layout approximates NeurIPS (5.5in x 9in text, Times, 10pt). For submission, switch to the official
+% NeurIPS style: replace the geometry/font block below with \usepackage{neurips_20XX} from the course-linked template.
+% Build: tectonic main.tex  (or pdflatex + bibtex in Overleaf). Figures come from `python state_bc/make_figures.py`.
+\documentclass[10pt]{article}
+\usepackage[letterpaper,textwidth=5.5in,textheight=9in,top=1in,headheight=12pt,headsep=25pt,footskip=30pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{newtxtext,newtxmath}  % provides the amssymb symbols; do not also load amssymb
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{microtype}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+\emergencystretch=1.5em  % lets lines with long \texttt names break instead of running into the margin
+\usepackage{natbib}
+\setcitestyle{numbers,square}
+
+\providecommand{\inprogress}[1]{\textcolor{red}{[In progress: #1]}}
+
+\title{In-Context Imitation of Goal-Conditioned Policies:\\ A Controlled Study on Push-T with a Hidden Goal}
+\author{
+  Nathan \quad Jimmy \quad Izat \quad Neil\\  % CHECK: full names and order
+  CS182, University of California, Berkeley
+}
+\date{Draft, November 24, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Transformers trained on prompts of input--output examples can learn new functions in context, and controlled studies have made
+this measurable for regression. We ask whether the same recipe works for closed-loop control, where the task must be inferred
+from trajectories and errors compound over time. We train a 9.75M-parameter GPT-2 to imitate two goal-conditioned teachers on
+variable-goal Push-T, a PPO policy and a behavior-cloning policy distilled from it. The goal is removed from the transformer's
+input, so it must infer the goal from $k$ demonstrations in its prompt. On unseen goals from the training quadrants it reaches
+91--92\% success, matching the goal-seeing teachers. With demonstrations of a different goal, or none, the same model scores
+1--2\%. A single demonstration is nearly enough. On goals in a held-out quadrant it still reaches the goal in 86--89\% of episodes
+but keeps the T there in only 64--67\%, against 93--94\% for the teachers. A pilot model that already preferred correct
+demonstrations offline scored 0\% in closed loop, which shows that closed-loop evaluation is necessary. An independent
+implementation reproduces all qualitative findings. Results are from one training seed; more seeds and a goal-estimation baseline
+are in progress.
+\end{abstract}
+
+\input{sec_intro}
+\input{sec_related}
+\input{sec_method}
+\input{sec_results}
+\input{sec_conclusion}
+
+\bibliographystyle{abbrvnat}
+\bibliography{refs}
+
+\appendix
+\input{sec_appendix_nathan}
+
+\section{PPO teacher and environment details}
+\label{sec:ppo}
+\inprogress{Jimmy: PPO teacher training (ManiSkill PPO baseline, 50M environment steps, seed 1, settings and training curve), the
+\texttt{PushTVarGoal-v1} environment (goal sampling, quadrant layout, T and arm start distributions, success criterion), and the
+per-quadrant teacher evaluation protocol (100 episodes per quadrant, fixed seeds, 80\% freeze bar). Reported teacher test results:
+PPO 93.8\% / 91.5\% and distilled BC 91.5\% / 88.8\% mean success-once / success-at-end.}
+
+\section{Reproducibility}
+\label{app:repro}
+Code: \url{https://github.com/Izatr2004/icl-for-control-policies}, branch \texttt{nathan-state-bc}. %CHECK: make the repo public or add reviewers before release
+The transformer is in \path{state_bc/pusht_icl.py} (subcommands \texttt{collect}, \texttt{train}, \texttt{offline},
+\texttt{eval}). The Colab notebook \path{notebooks/Train_PushT_ICL_Transformer.ipynb} runs the whole pipeline on one L4 GPU
+in about 4.5\,h. Every figure and table in this paper is regenerated from the committed result files, with no GPU or simulator, by
+running \texttt{python}~\path{state_bc/make_figures.py}. The trained weights are in \path{state_bc/teachers/}.
+
+\end{document}

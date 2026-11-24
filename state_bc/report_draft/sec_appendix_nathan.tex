@@ -1,0 +1,26 @@
+% Part of the team paper; included by main.tex (and by nathan_sections.tex for the standalone preview).
+% ============================================================================================
+\section{Teacher-forced action error}
+\label{app:action-error}
+\begin{table}[h]
+\centering
+\caption{Teacher-forced action MSE of the selected checkpoint (correct-goal / wrong-goal demonstrations; 1{,}024 prompts per cell).}
+\label{tab:action-error}
+\small
+\begin{tabular}{lccccc}
+\toprule
+Split & no demos & $k{=}1$ & $k{=}2$ & $k{=}4$ & $k{=}8$ \\
+\midrule
+val ($Q_1$--$Q_3$) & 0.0045 & 0.0019 / 0.117 & 0.0017 / 0.128 & 0.0015 / 0.135 & 0.0017 / 0.127 \\
+test ($Q_1$--$Q_3$) & 0.0044 & 0.0020 / 0.125 & 0.0017 / 0.137 & 0.0016 / 0.142 & 0.0018 / 0.134 \\
+test ($Q_4$) & 0.0076 & 0.0031 / 0.077 & 0.0029 / 0.082 & 0.0027 / 0.088 & 0.0041 / 0.085 \\
+\bottomrule
+\end{tabular}
+\end{table}
+Wrong-goal error is lower on $Q_4$ because the wrong goal is another $Q_4$ goal, closer on average than goals spread over three quadrants.
+
+\section{Development history of the BC teacher}
+\label{app:teacher-history}
+\inprogress{short summary of runs 1--3 from \texttt{state\_bc/README.md}. Run 1 used plain BC on released demonstrations (19\% / 10\%
+success); run 2 added noisy expert rollouts and DAgger (98\% / 78\%, with DAgger adding nothing measurable); run 3 trained our own
+variable-goal environment and PPO, then the team adopted the shared \texttt{PushTVarGoal-v1}.}

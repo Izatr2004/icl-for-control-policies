@@ -1,0 +1,86 @@
+% Related work. Part of the team paper; included by main.tex.
+% Every citation here was written from memory: check each claim against the paper before submission (%CHECK).
+\section{Related work}
+\label{sec:related}
+
+Our work combines three lines of research: controlled studies of in-context learning, transformers for sequential decision
+making, and imitation from a few demonstrations. Each subsection ends with how our setup differs.
+
+\subsection{In-context learning as a controlled phenomenon}
+In-context learning was first observed at scale in GPT-3~\cite{brown2020language}, which performs new tasks from a handful of
+examples in its prompt. Because natural-language tasks have no known ground truth, later work moved to synthetic settings where
+the task family is fixed by design. Garg et al.~\cite{garg2022can} trained transformers from scratch on prompts of input--output
+pairs from linear functions, sparse linear functions, decision trees and two-layer networks. In-context predictions matched the
+optimal estimator (least squares for linear functions) and were robust to some distribution shifts between training and test
+prompts. Several papers then asked \emph{which} algorithm the transformer implements. Aky{\"u}rek et al.~\cite{akyurek2023learning}
+showed that transformers trained on linear regression behave like gradient descent, ridge regression or exact least squares
+depending on depth and width. Von Oswald et al.~\cite{vonoswald2023transformers} constructed linear self-attention layers that
+perform a gradient-descent step and found that trained models match them.
+
+Other work studies \emph{when} in-context learning appears. Chan et al.~\cite{chan2022data} found that it depends on properties of
+the training data, such as bursty sequences and many rare classes, and competes with storing knowledge in the weights. Raventós et
+al.~\cite{raventos2023pretraining} showed for linear regression that below a threshold of task diversity, transformers behave like a
+Bayesian estimator with the pretraining tasks as prior and fail on new tasks. Above it, they generalize to new tasks like ridge
+regression. Xie et al.~\cite{xie2022explanation} interpret in-context learning as implicit Bayesian inference of a latent concept
+shared by the prompt. Mechanistic work identified induction heads, attention circuits that copy patterns from earlier in the
+context, as one mechanism behind in-context learning in language models~\cite{olsson2022context}.
+
+\textbf{Relation to our work.} We keep the Garg et al.\ recipe: a GPT-2 trained from scratch, a known task family, prompts of
+examples followed by a query, and evaluation on held-out tasks. The ``function'' is now a goal-conditioned policy with the goal
+hidden, and the ``examples'' are trajectories. We add closed-loop evaluation, where predictions change future inputs, which these
+studies do not have. The Bayesian view fits our setting well. With no demonstrations, the best prediction averages over goals,
+our no-context baseline. With demonstrations, the model can concentrate on the demonstrated goal. The task-diversity question
+of~\cite{raventos2023pretraining} is a natural next experiment for us.
+
+\subsection{Transformers for sequential decision making}
+Decision Transformer~\cite{chen2021decision} and Trajectory Transformer~\cite{janner2021offline} cast offline reinforcement learning
+as sequence modeling over states, actions and returns. Gato~\cite{reed2022generalist} trained one transformer on many control and
+language tasks and could be prompted with demonstrations of a task. Prompt-DT~\cite{xu2022prompting} extends Decision Transformer to
+few-shot generalization: a short trajectory segment from a new task, placed in the prompt, specifies the task to solve.
+
+A second group of papers trains transformers to learn \emph{reinforcement learning} in context. Algorithm
+Distillation~\cite{laskin2023incontext} trains on the learning histories of an RL algorithm, so the model improves its policy within
+its context across episodes. The Decision-Pretrained Transformer~\cite{lee2023supervised} is trained to predict the optimal action
+for a query state given an in-context dataset of interactions, and it explores and exploits in new tasks. Raparthy et
+al.~\cite{raparthy2023generalization} trained transformers to solve new sequential decision tasks from a few demonstrations and
+studied which data properties make this possible.
+
+\textbf{Relation to our work.} Prompt-DT, Gato and Raparthy et al.\ show that trajectory prompts can specify a task, but in large
+multi-task settings where context use is hard to isolate. Algorithm Distillation and DPT learn from rewards. Our setting uses
+no rewards and no return conditioning: the model imitates fixed teachers, and the only task variable is a hidden goal. That makes
+the controls exact, since a wrong-goal prompt changes only the goal and keeps the query states identical. It also lets us measure
+directly how much of the teacher's success the in-context learner recovers.
+
+\subsection{Imitation from a few demonstrations}
+One-shot imitation learning~\cite{duan2017oneshot} is the closest prior setup. A network conditioned on one demonstration of a
+block-stacking task, through attention over the demonstration and the current state, performs that task from new initial states,
+including stacking orders unseen in training. Other approaches to imitation from a single demonstration
+include meta-learning a policy that adapts by gradient steps~\cite{finn2017oneshot}, learning a task embedding from
+demonstrations~\cite{james2018taskembedded}, and transformer attention between a demonstration video and the robot's
+observations~\cite{dasari2020transformers}. Recent work brings in-context imitation to real robots: Keypoint Action
+Tokens~\cite{dipalo2024keypoint} prompt an off-the-shelf language model with demonstrations encoded as tokens, and In-Context Robot
+Transformer~\cite{fu2024incontext} trains a transformer by next-token prediction on prompts of teleoperated trajectories.
+
+Meta-reinforcement learning infers a task from experience rather than demonstrations. RL$^2$~\cite{duan2016rl2} and Wang et
+al.~\cite{wang2016learning} train recurrent policies whose hidden state adapts to a new task within a few episodes.
+MAML~\cite{finn2017model} learns an initialization that adapts with a few gradient steps. PEARL~\cite{rakelly2019efficient} encodes
+collected experience into a latent task variable that conditions the policy, the same role the hidden goal plays for us.
+
+\textbf{Relation to our work.} Our model is a demonstration-conditioned policy, like one-shot imitation, but it uses a
+general-purpose GPT-2 with no architecture specific to the task. We also make three measurements these systems usually do not
+report together: performance against the goal-seeing teacher, wrong-goal and no-context controls on identical starts, and a
+held-out region of task space.
+
+\subsection{Imitation learning and compounding errors}
+Behavior cloning~\cite{pomerleau1989alvinn} trains a policy by supervised learning on expert states. Its errors compound: the
+learner drifts into states the expert never visited, and its error can grow quadratically with the horizon~\cite{ross2010efficient}.
+DAgger~\cite{ross2011dagger} fixes this by labeling the learner's own states with the expert. DART~\cite{laskey2017dart} instead adds
+noise to the expert's actions during data collection, so the data covers nearby states while keeping the expert's labels. Policy
+distillation~\cite{rusu2016policy} compresses a trained RL policy into a smaller network by supervised learning. Push-T itself comes
+from the implicit behavior cloning work of Florence et al.~\cite{florence2021implicit} and is a standard benchmark for imitation, for
+example in Diffusion Policy~\cite{chi2023diffusion}.
+
+\textbf{Relation to our work.} Our BC teacher is a policy distillation of the PPO teacher with DART-style noise injection. The
+transformer is itself behavior cloning, conditioned on the context, and it shows the same compounding-error behavior: an offline
+error 4$\times$ that of the BC teacher gave 0\% closed-loop success. Its training queries come only from clean teacher rollouts. Noise
+injection on query states is the corresponding fix, and it is our next experiment.

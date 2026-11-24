@@ -1109,3 +1109,16 @@ examples many w fit the data, and the best predictor averages over them. For pol
   Every number was checked against the committed result files. Facts still to confirm with the team are marked `%CHECK`: the
   quadrant convention, the success threshold, Jimmy's PPO details and the Garg et al. hyperparameters. In-progress items are
   marked in red: seeds 1–2 and the goal-estimate baseline. Not compiled locally (no LaTeX installed); only structure-checked.
+- **2026-11-24:** Compiled the draft sections locally with Tectonic 0.15.0, a standalone LaTeX compiler kept in the session's temp folder
+  and not part of the repo. The result is 7 pages in the plain article class, including references. Fixed two tables that overflowed
+  the margin: the hyperparameter table now wraps, and the comparison table uses narrower column padding.
+- **2026-11-24:** Drafted the rest of the team paper in `report_draft/`, so it now compiles as a full paper: 13 pages, of which about
+  10 are core paper and the rest references and appendices.
+  - New files: `main.tex` (title, abstract, appendices, reproducibility), `sec_intro.tex`, `sec_related.tex` (four subsections, about
+    2.5 pages), `sec_conclusion.tex` and `refs.bib` (37 entries).
+  - Earlier sections split into `sec_method.tex`, `sec_results.tex` and `sec_appendix_nathan.tex`. Team members' names were removed
+    from the running text.
+  - `preview.tex`, `nathan_sections.tex` and `nathan_refs.bib` were removed; `main.tex` replaces them.
+  - The layout only approximates NeurIPS; switch to the official style file before submission.
+  - Jimmy's PPO and environment appendix is a placeholder.
+  - Every citation was written from memory and is marked to be checked.

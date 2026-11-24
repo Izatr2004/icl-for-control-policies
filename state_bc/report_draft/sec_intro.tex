@@ -1,0 +1,44 @@
+% Introduction. Part of the team paper; included by main.tex.
+\section{Introduction}
+\label{sec:intro}
+
+Large language models can perform a new task from a few examples in their prompt, with no weight update~\cite{brown2020language}.
+This \emph{in-context learning} (ICL) is hard to study in natural language, because neither the task family nor the optimal
+predictor is known. Garg et al.~\cite{garg2022can} made it measurable. They trained a transformer from scratch on prompts
+$(x_1, f(x_1), \dots, x_n, f(x_n), x_q)$, with $f$ drawn from a known function class such as linear functions, and compared its
+prediction of $f(x_q)$ with the optimal estimator. That setup gives full control over the task distribution, the number of
+examples and the test-time shift.
+
+We ask whether the same recipe works for \emph{control}. The analog of a function is a policy. The analog of a prompt is a set of
+demonstrations of a task, and the query is the robot's current state. Two features make control harder than regression. First,
+the task variable is not written in the demonstrations: it has to be inferred from how the demonstrations behave. Second,
+predictions feed back into the inputs. A small error in one action changes the next state, so errors compound over an
+episode~\cite{ross2010efficient}, and a low teacher-forced loss need not give a working controller.
+
+We study this in a controlled setting: Push-T~\cite{florence2021implicit} in ManiSkill~\cite{tao2024maniskill3}, where the goal
+position of the T varies between episodes and is \emph{hidden} from the learner. Two goal-conditioned teachers see the goal: a PPO
+policy and a behavior-cloning (BC) policy distilled from it. A GPT-2-style transformer sees only demonstrations from these
+teachers and the current state with the goal removed, so the demonstrations are its only source of information about the goal.
+We train it on goals in three quadrants of the goal region and test it on new goals in those quadrants and in the held-out
+fourth quadrant. To check that success comes from reading the context, every evaluation is repeated with demonstrations of a
+\emph{different} goal and with no demonstrations, from the same initial states.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item \textbf{A controlled testbed for in-context imitation in closed-loop control.} Variable-goal Push-T with a hidden goal,
+    goal-conditioned PPO and distilled BC teachers, Garg-style demonstration prompts, and correct-goal, wrong-goal and no-context
+    controls on identical initial states (Section~\ref{sec:method}). Code and all result files are released, and every figure and
+    table can be regenerated from them.
+  \item \textbf{In-context control matches the teachers in distribution.} On unseen goals in the training quadrants, the transformer
+    reaches 91--92\% success with demonstrations of the right goal, about the same as the teachers that see the goal. With wrong-goal
+    or no demonstrations it reaches 1--2\%. A single demonstration already gives about 90\%.
+  \item \textbf{On held-out goals, reaching transfers but holding does not.} In the held-out quadrant the transformer still reaches
+    the goal in 86--89\% of episodes, but keeps the T there at the end in only 64--67\%, against 93--94\% for the teachers.
+  \item \textbf{A closed-loop threshold on offline error, replicated across implementations.} A model that already prefers
+    correct demonstrations offline can still fail completely in closed loop. An independent implementation reproduces every
+    qualitative finding.
+\end{itemize}
+
+\paragraph{Scope.} The team's plan covers a $2 \times 2$ grid of teachers: full-state or camera observations, crossed with PPO or BC
+training. This draft reports the full-state row only. The camera-based teachers are in progress and not part of these results.
+%CHECK: adjust to match the proposal's framing and the camera teachers' status

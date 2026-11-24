@@ -27,6 +27,8 @@ so they can be mixed in one state-based learner.
 
 ## How to run
 
+- **Teacher weights:** [`teachers/`](teachers/README.md). The frozen v1 BC teacher is `teachers/bc_vargoal_run4.pt`; earlier teachers are kept
+  as records. Each file's source session, results and SHA-256 are in `teachers/README.md`.
 - **Transformer (v1):** [`notebooks/Train_PushT_ICL_Transformer.ipynb`](../notebooks/Train_PushT_ICL_Transformer.ipynb), built by
   `build_notebook_icl.py`; code in `pusht_icl.py`; tests `python -m unittest state_bc/test_icl_offline.py` (needs `transformers`).
 - **Teacher notebook (run 4, BC from Jimmy's PPO in the shared `PushTVarGoal-v1`):**
@@ -860,3 +862,10 @@ examples many w fit the data, and the best predictor averages over them. For pol
 - **2026-11-23:** Transformer v1 built: `pusht_icl.py` (`collect`, `train`, `offline`, `eval`), `build_notebook_icl.py`,
   `Train_PushT_ICL_Transformer.ipynb`, `test_icl_offline.py` (13 tests). `rollout` gained `reset_options` and per-episode success records.
   Offline tests: 41 in total.
+- **2026-11-23:** Teacher weights added to the repo under `state_bc/teachers/`, copied from Drive with a manifest (`teachers/README.md`):
+  - run 4 BC (the frozen v1 teacher)
+  - run 2 fixed-goal BC
+  - run 3b BC and PPO (our own environment, records only)
+
+  All load on CPU. Jimmy's PPO is not duplicated; run 4's Drive copy matches his committed file byte for byte. Transformer weights will
+  follow after the v1 run.

@@ -617,6 +617,174 @@ All 41 tests in both files pass. Not yet run on a GPU.
 - 2,048 training goals.
 - The stride of 4.
 
+### Transformer v1: progress check (2026-11-24, during training)
+**Session** `20261123T234841Z_icl_transformer_v1`; training run in `icl_runs/transformer_v1_seed0/`.
+
+**Demonstrations (collected, cached in `icl_data_v1/`)** — success-once / at-end, noise-free:
+
+| Split | PPO | BC |
+|---|---|---|
+| train (2,048 goals × 10) | 93.8% / 89.3% | 93.1% / 86.8% |
+| val | 93.5% / 87.1% | 92.2% / 84.8% |
+| test_in | 94.1% / 91.1% | 93.4% / 87.7% |
+| test_q4 | 94.5% / 93.4% | 92.7% / 90.5% |
+
+**Pilot (3,000 steps):**
+- **Speed:** 7.3–8.8 it/s (about 7.7) on the L4, so 100k steps take about 3.6 hours. That is longer than the 1–3 hour estimate, mostly
+  because of 401-token prompts at `k` = 8.
+- **Validation action error (MSE), correct-goal vs wrong-goal demonstrations:**
+
+| Step | k = 0 (none) | k = 1 | k = 2 | k = 4 | k = 8 |
+|---|---|---|---|---|---|
+| 1,000 | 0.0250 | 0.0249 / 0.0275 | 0.0231 / 0.0258 | 0.0214 / 0.0236 | 0.0241 / 0.0263 |
+| 2,000 | 0.0182 | 0.0184 / 0.0208 | 0.0168 / 0.0194 | 0.0150 / 0.0172 | 0.0173 / 0.0200 |
+| 3,000 | 0.0157 | 0.0152 / 0.0189 | 0.0142 / 0.0181 | **0.0128** / 0.0163 | 0.0144 / 0.0182 |
+
+  **The ICL signal is there:** with any context, correct-goal demonstrations beat wrong-goal ones by 18–27%, and `k` = 4 correct beats no
+  context by 18%. `k` = 8 is worse than `k` = 4 so far; longer prompts may need more training.
+- **Closed loop (64 validation goals × 2 starts, PPO demonstrations):** 0% for `k` = 0, `k` = 4 correct and `k` = 4 wrong. The teachers on the
+  same starts scored 94% (PPO) and 91% (BC). This was expected this early: the transformer's action error (0.013) is about 4× the run 4 BC
+  teacher's validation error (0.003), and small per-step errors compound over 100 steps.
+
+**Full run (from checkpoint timestamps, because the logs had not synced to Drive):**
+- Started about 00:04 UTC. The first checkpoint (2,500 steps) was at 00:09.
+- `last.pt` was last saved at 01:34, so about 40k steps were done by then.
+- `best.pt` last improved at 01:28, so validation error was still falling.
+- Expected end about 03:45 UTC, plus about 30 minutes of final evaluation.
+
+**Second check at about 95k steps (Drive revision history of the checkpoints, about 03:38 UTC):**
+- `last.pt` has 38 saves, one per evaluation: 2,500 through 95,000 steps, about 5.6 minutes (≈7.4 it/s) apart.
+- `best.pt` was rewritten at 33 of those 38 evaluations. It did not improve at 40k, 65k, 77.5k, 80k or 95k steps.
+- Its last improvement was at 92.5k (03:32 UTC), so the validation action error (mean of correct-goal and no-context MSE) was still
+  creeping down late in the cosine schedule, with no sign of overfitting.
+- Not visible from Drive: the actual MSE values, the correct-vs-wrong gap and closed-loop success. They need the synced log or the
+  final evaluation.
+
+**Training finished (2026-11-24, about 03:48 UTC; `train_log.jsonl` synced on close).** Validation action error (MSE), correct-goal /
+wrong-goal demonstrations:
+
+| Step | k = 0 (none) | k = 1 | k = 2 | k = 4 | k = 8 |
+|---|---|---|---|---|---|
+| 2,500 | 0.0194 | 0.0172 / 0.0216 | 0.0166 / 0.0214 | 0.0154 / 0.0199 | 0.0176 / 0.0220 |
+| 10,000 | 0.0104 | 0.0087 / 0.0352 | 0.0075 / 0.0410 | 0.0068 / 0.0442 | 0.0078 / 0.0442 |
+| 30,000 | 0.0072 | 0.0044 / 0.0723 | 0.0038 / 0.0814 | 0.0033 / 0.0904 | 0.0038 / 0.0882 |
+| 50,000 | 0.0059 | 0.0031 / 0.0937 | 0.0027 / 0.1058 | 0.0024 / 0.1144 | 0.0027 / 0.1114 |
+| 70,000 | 0.0049 | 0.0023 / 0.1108 | 0.0020 / 0.1233 | 0.0018 / 0.1340 | 0.0021 / 0.1287 |
+| 90,000 | 0.0044 | 0.0020 / 0.1161 | 0.0018 / 0.1285 | 0.0016 / 0.1393 | 0.0017 / 0.1335 |
+| **100,000** | **0.0044** | **0.0020** / 0.1164 | **0.0017** / 0.1300 | **0.0015** / 0.1399 | **0.0017** / 0.1343 |
+
+- **`best.pt` is the 100k checkpoint** (validation score 0.00227, the lowest of all 40 evaluations), so `best.pt` and `final.pt` match in quality.
+- **Strong ICL signal:** at `k` = 4, correct-goal demonstrations give 0.0015 and wrong-goal ones 0.140, about 90× worse. The model follows
+  the goal the demonstrations show. Wrong-goal error *rose* throughout training, as it committed more to the context.
+- **Context helps:** `k` = 4 correct is about 3× better than no context (0.0044). `k` = 8 is now close to `k` = 4 (0.0017 vs 0.0015).
+- **Compared with the pilot:** action error is about 9× lower than the pilot's 0.013 (which gave 0% closed loop) and about half the
+  run 4 BC teacher's validation error (about 0.003, a different but comparable data set). This makes a decent closed-loop result
+  plausible. The final evaluation (test splits, closed loop) is the real test.
+
+**Final evaluation, part 1: action error on unseen goals** (`final_eval/action_error.json`, `best.pt` = 100k). Correct-goal / wrong-goal:
+
+| Split | k = 0 (none) | k = 1 | k = 2 | k = 4 | k = 8 |
+|---|---|---|---|---|---|
+| val | 0.0045 | 0.0019 / 0.117 | 0.0017 / 0.128 | 0.0015 / 0.135 | 0.0017 / 0.127 |
+| test_in (Q1–Q3) | 0.0044 | 0.0020 / 0.125 | 0.0017 / 0.137 | **0.0016** / 0.142 | 0.0018 / 0.134 |
+| test_q4 (held out) | 0.0076 | 0.0031 / 0.077 | 0.0029 / 0.082 | **0.0027** / 0.088 | 0.0041 / 0.085 |
+
+- **No overfitting to training goals:** test_in matches val.
+- **Q4 generalizes, with a cost:** k = 4 error is about 1.7× in-distribution, but still about 3× better than no context and about 30× better
+  than wrong-goal demonstrations. So the model reads held-out goals from the demonstrations. It does not fall back to a Q1–Q3 habit.
+- **Q4's wrong-goal error is lower** (0.088 vs 0.142), probably because the wrong goal is another Q4 goal, so it is closer than
+  across Q1–Q3.
+- **k = 8 degrades most on Q4** (0.0041 vs 0.0027 at k = 4): longer prompts generalize worse out of distribution.
+- **Decision table:** the bottom row (correct about equal to wrong) is ruled out. The choice between "keep v1" and "noisy-query fine-tune"
+  waits for the closed-loop results.
+
+**Final evaluation, part 2: closed loop, test_in** (128 goals × 4 starts = 512 episodes per cell; read from the Colab output while
+test_q4 was still running). Success-once / success-at-end:
+
+| Context | k = 0 (none) | k = 1 correct / wrong | k = 2 correct / wrong | k = 4 correct / wrong | k = 8 correct / wrong |
+|---|---|---|---|---|---|
+| PPO demos | 1% / 0% | **90% / 82%** · 2% / 1% | **92% / 88%** · 2% / 1% | **91% / 88%** · 1% / 1% | **92% / 89%** · 2% / 1% |
+| BC demos | 1% / 0% | **91% / 84%** · 2% / 0% | **92% / 88%** · 2% / 1% | **92% / 88%** · 2% / 1% | **90% / 84%** · 1% / 1% |
+
+Teachers, which see the goal, on the same starts: PPO 94% / 89%, BC 92% / 86%.
+
+- **v1 works in closed loop:** with correct-goal demonstrations the transformer matches the teachers (within about 2 points of PPO and level
+  with BC), without ever seeing the goal.
+- **ICL in control, cleanly:** wrong-goal demonstrations give 1–2% and no context 0–1%. Success comes entirely from the context.
+- **One demonstration is nearly enough:** k = 1 already reaches 90%; k ≥ 2 adds a few points at the end.
+- **The noisy-query fine-tune is not needed** for in-distribution goals. The compounding-error worry from the pilot did not materialize
+  once action error dropped about 9×.
+- **First test_q4 cell:** PPO context, k = 0: 0% / 0%; k = 1 correct: 86% / 63%. Held-out goals are mostly reached, but holding
+  the T there is weaker. Rest pending.
+- **test_q4 headline (reported by Nathan from the Colab output):** success-at-end about 67%, compared with the teachers' 90–93% on Q4
+  demonstrations. `closed_loop.json` on Drive held only test_in when checked (04:04 UTC); add the full Q4 table when it syncs.
+- **Verdict (2026-11-24):** v1 is the main result. Freeze it, with no retraining from scratch.
+  - In distribution, ICL in control matches the teachers.
+  - On held-out Q4, it still works far above the controls but loses about 20–25 points at the end. Episodes mostly reach the goal
+    (success-once is high) and then fail to hold the T.
+  - That "reaches but doesn't hold" pattern is what the noisy-query fine-tune targets (recovering from its own drift near the goal), so
+    v1b is now an optional experiment aimed at the Q4 gap, not a rescue. Report it as a separate row if run. Its training goals stay Q1–Q3.
+
+**Final evaluation, part 3: closed loop, test_q4 (held-out quadrant)** (`final_eval/closed_loop.json`, complete 04:19 UTC; 512 episodes
+per cell). Success-once / success-at-end:
+
+| Context | k = 0 (none) | k = 1 correct · wrong | k = 2 correct · wrong | k = 4 correct · wrong | k = 8 correct · wrong |
+|---|---|---|---|---|---|
+| PPO demos | 0.2% / 0% | **86% / 63%** · 3% / 0% | **89% / 67%** · 4% / 0% | **86% / 67%** · 4% / 0% | **90% / 65%** · 4% / 0% |
+| BC demos | 0.2% / 0% | **86% / 58%** · 3% / 0% | **89% / 66%** · 5% / 1% | **89% / 64%** · 4% / 0% | **89% / 64%** · 3% / 0% |
+
+Teachers on the same starts: PPO 95% / 93%, BC 95% / 94%.
+
+- **Reaching transfers to the held-out quadrant:** success-once is 86–90%, only 5–9 points below the teachers.
+- **Holding does not:** success-at-end is 58–67%, about 27 points below the teachers. In-distribution, the once-to-end drop is 3–8 points;
+  on Q4 it is about 22. On roughly a quarter of Q4 episodes the transformer gets the T onto the goal and then pushes it back off.
+- **ICL is still clean on Q4:** wrong-goal 3–5% / 0–1%, no context 0.2% / 0%.
+- **k does not close the gap:** at-end success plateaus at k = 2 (66–67%). More demonstrations of the new goal do not teach fine control near it.
+- **Final verdict:** v1 is frozen as the main result. The Q4 holding gap is the headline limitation, and the noisy-query fine-tune (v1b)
+  is the natural, optional experiment against it.
+
+**Novelty and broader meaning (discussed 2026-11-24, while test_q4 finished):**
+- **The core idea is not new.** Demonstration-conditioned policies go back at least to one-shot imitation learning (Duan et al., 2017).
+  Related transformer work includes Prompt-DT, Algorithm Distillation, Decision-Pretrained Transformers and in-context robot
+  transformers. Verify citations before the write-up.
+- **The contribution is a clean, controlled study.** It follows Garg et al.'s function-class style, moved to closed-loop continuous
+  control:
+  - a hidden task variable
+  - correct, wrong and no-context controls that isolate context use (90% vs 1–2% vs 0–1%)
+  - a held-out goal region
+  - a comparison with the goal-seeing teacher
+- **Takeaways:**
+  1. A demonstration can replace explicit goal specification at no cost in distribution.
+  2. The policy commits fully to its context. Wrong demonstrations are followed confidently, so the prompt is a strong control
+     channel and also a risk.
+  3. Offline error has a closed-loop threshold: 0.013 gave 0%, 0.0015 matched the teachers.
+  4. Out of distribution, coarse behavior (reaching) transfers better than precision (holding).
+- **Caveat:** k = 1 is nearly enough, so this is close to goal retrieval from the final T pose. The goal-estimate baseline is needed to
+  say more.
+- **Ideas that would make it more interesting:**
+  - **Task-diversity sweep:** train with 16 / 64 / 256 / 2,048 goals and measure when Q4 generalization emerges (memorization vs ICL,
+    as in Raventós et al., 2023).
+  - **Hidden variables the final state does not reveal:** dynamics such as T mass or friction, or the goal orientation.
+  - **Imperfect demonstrations:** noisy or failed demonstrations in the context.
+
+**Monitoring gap found:** `train_log.jsonl` and `notebook.log` stay open for the whole training step. Drive uploads them only when they
+close, so live progress is visible only in the Colab cell output. Fix later: open, append and close the log at every evaluation.
+
+**Main risk for closed-loop success, and the likely fix:**
+- **Risk:** every query state comes from a clean, noise-free teacher episode, so the transformer never learns to recover from its own
+  mistakes. This is exactly run 1's failure (19% with clean demonstrations only). Run 2 reached 98% by adding noisy-driver rollouts labeled
+  by the clean teacher.
+- **Fix if the full run's closed loop stays low ("v1b"):** keep the support demonstrations clean, but draw **query** states from teacher
+  rollouts with action noise (0.1–0.3), labeled with the teacher's clean action.
+  - It needs a second data collection (`collect` with a noise option for query episodes) and a retrain.
+  - It changes nothing about the hidden-goal design.
+  - **No need to retrain from scratch (discussed 2026-11-24).** Fine-tune from v1's `best.pt`:
+    - weights only, with a fresh optimizer, in a new run folder
+    - a lower learning rate (about 3e-5) with a short warmup, because Jimmy's PPO continuation collapsed when a fresh Adam restarted at full rate
+    - about 20–30k steps (45–65 minutes), with queries mixed about 50/50 clean and noisy so it keeps what it learned
+  - Needs a small code addition (`train --init-from`) and the extra noisy collection (about 10 minutes, cached).
+  - For the write-up, a from-scratch run on the final recipe is cleaner. Do it later if time allows, or report the two-stage training as it is.
+
 ### Pre-run assessment (2026-11-23, before running)
 The overall design is sound: the hidden goal forces context use, and Q4 goals test generalization. Risks, most likely first:
 1. **PPO may not reach 80% in 50M transitions.** The task is now harder (moving goals and varied tip starts), and the fixed-goal

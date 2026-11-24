@@ -24,4 +24,17 @@ ppo = bc.load_released_ppo("state_bc/teachers/ppo_run3b_own_env.pt", 31, 7)     
 All of them take the full 31-number state, goal included (`obs_mode="state"`), and output 7 `pd_joint_delta_pos` actions in [-1, 1].
 BC checkpoints store their own normalization statistics and training config (`config`, `extra`).
 
-**Transformer weights** (`pusht_icl.py`, about 39 MB each) are not here yet. They will be added once the v1 run finishes and is evaluated.
+## Transformer (in-context learner)
+
+| File | What it is | Test result (closed loop, k = 4 correct-goal demonstrations, success-once / at end) | Drive session | SHA-256 |
+|---|---|---|---|---|
+| **`icl_transformer_v1.pt`** | **The v1 ICL transformer** (GPT-2, 12 layers, width 256, 9.75M parameters). Goal hidden from its input (28-number state); infers the goal from `k` demonstrations of (state, action). Trained 100k steps on Q1–Q3 goals with PPO and BC demonstrations; this is `best.pt`, which is the 100k checkpoint | test_in 91% / 88% (PPO demos), 92% / 88% (BC); test_q4 86% / 67% (PPO), 89% / 64% (BC). Wrong-goal demos 1–5%, no context 0–1%. 512 episodes per cell | `icl_runs/transformer_v1_seed0/best.pt` (evaluation in `20261123T234841Z_icl_transformer_v1/final_eval/`) | `5a4fea86e3ffa80dcb0a2000b57fba34a83dfc4aea25b17a05d142160f75c495` |
+
+```python
+import pusht_icl as icl
+model = icl.load_model("state_bc/teachers/icl_transformer_v1.pt", device="cpu")   # ICLTransformer; forward(support_s, support_a, query_s)
+```
+
+Its input is the 31-number state with the goal (indices 21:24) removed (`icl.hide_goal`), so 28 numbers. It outputs 7
+`pd_joint_delta_pos` actions. State normalization is stored in the checkpoint as buffers. For closed loop, see `icl.ICLActor` and
+`icl.build_support`. Full results are in [`../README.md`](../README.md) under "Transformer v1".

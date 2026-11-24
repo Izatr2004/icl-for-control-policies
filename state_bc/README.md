@@ -1037,3 +1037,7 @@ examples many w fit the data, and the best predictor averages over them. For pol
 
   All load on CPU. Jimmy's PPO is not duplicated; run 4's Drive copy matches his committed file byte for byte. Transformer weights will
   follow after the v1 run.
+- **2026-11-24:** Transformer v1 final results logged (training curve, action error and closed loop on test_in and test_q4), with the
+  verdict: v1 is frozen as the main result.
+- **2026-11-24:** Added the v1 transformer weights to `teachers/icl_transformer_v1.pt`. This is the run's `best.pt`, the 100k-step
+  checkpoint, 39 MB. Downloaded from Drive by Nathan, checked to load and to be the 100k checkpoint, and hashed into the manifest.

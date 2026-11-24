@@ -1,0 +1,139 @@
+{
+  "checkpoint": "/content/drive/MyDrive/182_final_project/state_bc/20261123T234841Z_icl_transformer_v1/pilot/final.pt",
+  "stride": 4,
+  "starts_per_goal": 2,
+  "splits": {
+    "val": {
+      "goals": 64,
+      "episodes": 128,
+      "seed": 7200000,
+      "results": {
+        "teacher_ppo": {
+          "episodes": 128,
+          "seed": 7200000,
+          "noise_std": 0.0,
+          "success_once": 0.9375,
+          "success_at_end": 0.9375,
+          "mean_steps_to_first_success": 42.1583366394043,
+          "by_goal_quadrant": {
+            "Q1": {
+              "episodes": 42,
+              "success_once": 0.9761905074119568,
+              "success_at_end": 0.9761905074119568
+            },
+            "Q2": {
+              "episodes": 54,
+              "success_once": 0.9629629850387573,
+              "success_at_end": 0.9629629850387573
+            },
+            "Q3": {
+              "episodes": 32,
+              "success_once": 0.84375,
+              "success_at_end": 0.84375
+            }
+          }
+        },
+        "teacher_bc": {
+          "episodes": 128,
+          "seed": 7200000,
+          "noise_std": 0.0,
+          "success_once": 0.90625,
+          "success_at_end": 0.828125,
+          "mean_steps_to_first_success": 43.784481048583984,
+          "by_goal_quadrant": {
+            "Q1": {
+              "episodes": 42,
+              "success_once": 0.9047619104385376,
+              "success_at_end": 0.738095223903656
+            },
+            "Q2": {
+              "episodes": 54,
+              "success_once": 0.944444477558136,
+              "success_at_end": 0.9259259104728699
+            },
+            "Q3": {
+              "episodes": 32,
+              "success_once": 0.84375,
+              "success_at_end": 0.78125
+            }
+          }
+        },
+        "ppo_k0_none": {
+          "episodes": 128,
+          "seed": 7200000,
+          "noise_std": 0.0,
+          "success_once": 0.0,
+          "success_at_end": 0.0,
+          "mean_steps_to_first_success": null,
+          "by_goal_quadrant": {
+            "Q1": {
+              "episodes": 42,
+              "success_once": 0.0,
+              "success_at_end": 0.0
+            },
+            "Q2": {
+              "episodes": 54,
+              "success_once": 0.0,
+              "success_at_end": 0.0
+            },
+            "Q3": {
+              "episodes": 32,
+              "success_once": 0.0,
+              "success_at_end": 0.0
+            }
+          }
+        },
+        "ppo_k4_correct": {
+          "episodes": 128,
+          "seed": 7200000,
+          "noise_std": 0.0,
+          "success_once": 0.0,
+          "success_at_end": 0.0,
+          "mean_steps_to_first_success": null,
+          "by_goal_quadrant": {
+            "Q1": {
+              "episodes": 42,
+              "success_once": 0.0,
+              "success_at_end": 0.0
+            },
+            "Q2": {
+              "episodes": 54,
+              "success_once": 0.0,
+              "success_at_end": 0.0
+            },
+            "Q3": {
+              "episodes": 32,
+              "success_once": 0.0,
+              "success_at_end": 0.0
+            }
+          }
+        },
+        "ppo_k4_wrong": {
+          "episodes": 128,
+          "seed": 7200000,
+          "noise_std": 0.0,
+          "success_once": 0.0,
+          "success_at_end": 0.0,
+          "mean_steps_to_first_success": null,
+          "by_goal_quadrant": {
+            "Q1": {
+              "episodes": 42,
+              "success_once": 0.0,
+              "success_at_end": 0.0
+            },
+            "Q2": {
+              "episodes": 54,
+              "success_once": 0.0,
+              "success_at_end": 0.0
+            },
+            "Q3": {
+              "episodes": 32,
+              "success_once": 0.0,
+              "success_at_end": 0.0
+            }
+          }
+        }
+      }
+    }
+  }
+}

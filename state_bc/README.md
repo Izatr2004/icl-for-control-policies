@@ -31,6 +31,14 @@ so they can be mixed in one state-based learner.
   as records. Each file's source session, results and SHA-256 are in `teachers/README.md`.
 - **Transformer (v1):** [`notebooks/Train_PushT_ICL_Transformer.ipynb`](../notebooks/Train_PushT_ICL_Transformer.ipynb), built by
   `build_notebook_icl.py`; code in `pusht_icl.py`; tests `python -m unittest state_bc/test_icl_offline.py` (needs `transformers`).
+- **Report figures and tables (no GPU or simulator; needs only `numpy` and `matplotlib`):**
+  `python state_bc/make_figures.py` regenerates every v1 figure (PDF and PNG) plus `tables.md` and `tables.tex`.
+  - Inputs: the committed result files in [`results/transformer_v1_seed0/`](results/transformer_v1_seed0/), copied unchanged from the
+    Colab run's Drive folder: `train_log.jsonl`, `notebook.log`, `action_error.json`, `closed_loop.json`, `config.json`, and the pilot's
+    `pilot_closed_loop_val.json`.
+  - Output: `results/transformer_v1_seed0/figures/`.
+  - Tests: `python -m unittest state_bc/test_figures.py`.
+  - To reproduce the result files themselves, rerun the transformer notebook (data collection, training, final evaluation; about 4.5 h on an L4).
 - **Teacher notebook (run 4, BC from Jimmy's PPO in the shared `PushTVarGoal-v1`):**
   [`notebooks/Train_PushT_VarGoal_BC_from_Jimmy.ipynb`](../notebooks/Train_PushT_VarGoal_BC_from_Jimmy.ipynb).
   Upload to Colab, choose an L4 GPU, run top to bottom. Outputs go to `MyDrive/182_final_project/state_bc/<session>/`.
@@ -743,6 +751,46 @@ Teachers on the same starts: PPO 95% / 93%, BC 95% / 94%.
 - **Final verdict:** v1 is frozen as the main result. The Q4 holding gap is the headline limitation, and the noisy-query fine-tune (v1b)
   is the natural, optional experiment against it.
 
+**Comparison with Jimmy's two-seed transformer run (2026-11-24, from his PDF summary; branch `jimmy-state-rl`, `state_icl/`):**
+
+| | Nathan v1 (1 seed) | Jimmy (mean of 2 seeds) |
+|---|---|---|
+| Training | 100k steps, warmup + cosine to 10%, bf16, L4 | 50k steps, constant lr 1e-4, fp16, T4 |
+| Validation MSE at k = 4: correct / wrong / none | 0.0015 / 0.14 / 0.0044 | 0.004–0.006 / 0.08–0.12 / 0.009–0.012 |
+| Q1–Q3, k = 4, PPO / BC demos (once / end) | 91% / 88%, 92% / 88% | 83% / 68%, 84% / 67% |
+| Q4, k = 4, PPO / BC demos (once / end) | 86% / 67%, 89% / 64% | 78% / 56%, 77% / 55% |
+| Wrong-goal / no demos | 1–5% / 0–1% | 2–4% / 0–1% |
+
+Same architecture, teachers, goal splits and evaluation protocol. Teacher success on the evaluation starts matches exactly (94 / 92 / 95 / 95),
+so the closed-loop numbers are directly comparable.
+- **Both runs show the same qualitative result:** clean ICL in control, k = 1 gives most of the effect, PPO and BC demos are
+  interchangeable, wrong-goal error rises during training, and Q4 reaches but holds worse.
+- **v1 is stronger everywhere,** by about 8 points success-once and about 20 points success-at-end in distribution. That fits the
+  error-threshold story: about 3× lower action error buys far better holding at the goal.
+- **Not a controlled comparison.** Steps, learning-rate schedule, precision and codebase all differ. At 50k steps v1's validation MSE
+  was already 0.0024, so steps alone probably don't explain the gap. The decaying learning rate (and possibly fp16 vs bf16) likely matters.
+- **Jimmy's seeds expose a risk in v1's numbers:** his Q4 success-at-end was 41% for seed 0 vs 72% for seed 1, with success-once stable.
+  v1 is a single seed, so its 64–67% Q4 at-end could be anywhere in that range. The spec asks for 3 seeds.
+- **Suggested team plan:** one recipe (v1's schedule, 100k steps) for 3 seeds. Either Nathan runs seeds 1–2 with `pusht_icl.py` (about
+  3.6 h each on an L4), or Jimmy reruns with this schedule, as his PDF proposes. Report mean ± spread.
+
+**Report draft readiness (2026-11-24; draft due on CMT 11:59 pm, NeurIPS style, 5–10 pages):**
+- **Have:**
+  - main result with controls
+  - validation-loss curve
+  - Q4 held-out result
+  - an independent replication (Jimmy's run)
+  - hyperparameters, mostly taken from Garg et al.'s GPT-2 setup
+- **Gaps against the course guidelines:**
+  - error bars: one seed, and only aggregate rates were saved, so binomial intervals per cell for now; seeds 1–2 later
+  - training-loss curve: printed to stdout and `notebook.log` only, not in `train_log.jsonl`
+  - results and plotting script not in the repo: the evaluation JSONs live only on Drive, and the guidelines require that reviewers
+    can regenerate every plot and table
+  - goal-estimate baseline missing
+  - controlled-comparison commentary: the Jimmy comparison changes several things at once
+- **Draft plan:** mark seeds and the baseline as in progress. Use binomial 95% intervals and say they ignore per-goal clustering. Commit the
+  result files plus a figure script.
+
 **Novelty and broader meaning (discussed 2026-11-24, while test_q4 finished):**
 - **The core idea is not new.** Demonstration-conditioned policies go back at least to one-shot imitation learning (Duan et al., 2017).
   Related transformer work includes Prompt-DT, Algorithm Distillation, Decision-Pretrained Transformers and in-context robot
@@ -855,6 +903,7 @@ pushing strategy changes with the target angle (which way and how far to turn th
 | 2026-11-23 | Use success-once as the competence measure; consider truncating transformer demos at first success | Run 3b teachers reach the goal reliably but end on it only about 30% of the time |
 | 2026-11-23 | **Freeze run 4's BC teacher as the full-state BC teacher** (`teachers/bc_teacher.pt` in session `20261123T230947Z_run4_bc_from_jimmy`) | Test success-once 89–94% in every quadrant (bar 80%), about 2 points below Jimmy's PPO; success-at-end 84–93% |
 | 2026-11-23 | **Use Jimmy's `PushTVarGoal-v1` and his frozen PPO teacher; run 4 distills the BC teacher from it** | One shared environment for all transformer data; PPO is Jimmy's role and BC is distilled from it; his teacher holds the goal (at-end about 90%) and his goal region is wider. Run 3b's teachers are kept as a record, not used for transformer data. Cross-evaluation skipped for now. |
+| 2026-11-24 | **The v1 report uses only the two full-state teachers: Jimmy's PPO and Nathan's distilled BC.** The camera-observation teachers (Izat, Neil) are future work | They are the only teachers trained on `PushTVarGoal-v1` so far. Both transformer runs (Nathan v1, Jimmy two-seed) already use exactly these two, so no new training is needed for the draft |
 
 ## v1 plan: variable-goal Push-T (from `CODEX_CONTEXT.md`, 2026-11-23)
 
@@ -1041,3 +1090,22 @@ examples many w fit the data, and the best predictor averages over them. For pol
   verdict: v1 is frozen as the main result.
 - **2026-11-24:** Added the v1 transformer weights to `teachers/icl_transformer_v1.pt`. This is the run's `best.pt`, the 100k-step
   checkpoint, 39 MB. Downloaded from Drive by Nathan, checked to load and to be the 100k checkpoint, and hashed into the manifest.
+- **2026-11-24:** Added the v1 result files to `results/transformer_v1_seed0/`, copied from Drive: training and validation logs,
+  `notebook.log`, final action error, closed-loop results, config, and the pilot's closed loop. Also added `make_figures.py`, which
+  regenerates the report figures and tables from them:
+  - training loss (parsed from `notebook.log`) and the validation curve
+  - closed-loop success vs k with 95% Wilson intervals
+  - action error vs k
+  - four tables, including hyperparameters with reasons
+
+  Tests are in `test_figures.py` (4, all passing). The intervals treat the 512 episodes per cell as independent: they ignore goal
+  clustering (128 goals × 4 starts) and seed variation.
+- **2026-11-24:** Drafted the report's methods and results for the full-state teachers and the transformer:
+  - `report_draft/nathan_sections.tex`, to `\input` into the team's NeurIPS paper
+  - `nathan_refs.bib`
+  - `preview.tex`, which compiles the sections on their own
+  - `figures/`, copied from `make_figures.py` output
+
+  Every number was checked against the committed result files. Facts still to confirm with the team are marked `%CHECK`: the
+  quadrant convention, the success threshold, Jimmy's PPO details and the Garg et al. hyperparameters. In-progress items are
+  marked in red: seeds 1–2 and the goal-estimate baseline. Not compiled locally (no LaTeX installed); only structure-checked.

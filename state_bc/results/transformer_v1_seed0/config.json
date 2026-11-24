@@ -1,0 +1,29 @@
+{
+  "cmd": "train",
+  "data_dir": "/content/icl_data_v1",
+  "out": "/content/drive/MyDrive/182_final_project/state_bc/icl_runs/transformer_v1_seed0",
+  "ks": [
+    0,
+    1,
+    2,
+    4,
+    8
+  ],
+  "stride": 4,
+  "iters": 100000,
+  "batch_size": 64,
+  "lr": 0.0001,
+  "weight_decay": 0.0,
+  "warmup": 1000,
+  "n_layer": 12,
+  "n_embd": 256,
+  "n_head": 8,
+  "log_every": 500,
+  "eval_every": 2500,
+  "seed": 0,
+  "resume": true,
+  "device": "cuda",
+  "pairs_per_episode": 25,
+  "train_goals": 2048,
+  "episodes_per_goal": 10
+}

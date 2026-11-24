@@ -1,0 +1,614 @@
+
+$ apt-get update -qq
+W: Skipping acquire of configured file 'main/source/Sources' as repository 'https://r2u.stat.illinois.edu/ubuntu noble InRelease' does not seem to provide it (sources.list entry misspelt?)
+
+$ apt-get install -y -qq libvulkan1 libvulkan-dev vulkan-tools libglvnd-dev
+Selecting previously unselected package libglx-dev:amd64.
+(Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 127324 files and directories currently installed.)
+Preparing to unpack .../0-libglx-dev_1.7.0-1build1_amd64.deb ...
+Unpacking libglx-dev:amd64 (1.7.0-1build1) ...
+Selecting previously unselected package libgl-dev:amd64.
+Preparing to unpack .../1-libgl-dev_1.7.0-1build1_amd64.deb ...
+Unpacking libgl-dev:amd64 (1.7.0-1build1) ...
+Selecting previously unselected package libegl-dev:amd64.
+Preparing to unpack .../2-libegl-dev_1.7.0-1build1_amd64.deb ...
+Unpacking libegl-dev:amd64 (1.7.0-1build1) ...
+Selecting previously unselected package libgles1:amd64.
+Preparing to unpack .../3-libgles1_1.7.0-1build1_amd64.deb ...
+Unpacking libgles1:amd64 (1.7.0-1build1) ...
+Selecting previously unselected package libgles-dev:amd64.
+Preparing to unpack .../4-libgles-dev_1.7.0-1build1_amd64.deb ...
+Unpacking libgles-dev:amd64 (1.7.0-1build1) ...
+Selecting previously unselected package libopengl-dev:amd64.
+Preparing to unpack .../5-libopengl-dev_1.7.0-1build1_amd64.deb ...
+Unpacking libopengl-dev:amd64 (1.7.0-1build1) ...
+Selecting previously unselected package libvulkan-dev:amd64.
+Preparing to unpack .../6-libvulkan-dev_1.3.275.0-1build1_amd64.deb ...
+Unpacking libvulkan-dev:amd64 (1.3.275.0-1build1) ...
+Selecting previously unselected package vulkan-tools.
+Preparing to unpack .../7-vulkan-tools_1.3.275.0+dfsg1-1_amd64.deb ...
+Unpacking vulkan-tools (1.3.275.0+dfsg1-1) ...
+Selecting previously unselected package libglvnd-core-dev:amd64.
+Preparing to unpack .../8-libglvnd-core-dev_1.7.0-1build1_amd64.deb ...
+Unpacking libglvnd-core-dev:amd64 (1.7.0-1build1) ...
+Selecting previously unselected package libglvnd-dev:amd64.
+Preparing to unpack .../9-libglvnd-dev_1.7.0-1build1_amd64.deb ...
+Unpacking libglvnd-dev:amd64 (1.7.0-1build1) ...
+Setting up libvulkan-dev:amd64 (1.3.275.0-1build1) ...
+Setting up libglvnd-core-dev:amd64 (1.7.0-1build1) ...
+Setting up vulkan-tools (1.3.275.0+dfsg1-1) ...
+Setting up libgles1:amd64 (1.7.0-1build1) ...
+Setting up libglx-dev:amd64 (1.7.0-1build1) ...
+Setting up libopengl-dev:amd64 (1.7.0-1build1) ...
+Setting up libgl-dev:amd64 (1.7.0-1build1) ...
+Setting up libegl-dev:amd64 (1.7.0-1build1) ...
+Setting up libgles-dev:amd64 (1.7.0-1build1) ...
+Setting up libglvnd-dev:amd64 (1.7.0-1build1) ...
+Processing triggers for libc-bin (2.39-0ubuntu8.9) ...
+/sbin/ldconfig.real: /usr/local/lib/libtbbmalloc.so.2 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_adapter_level_zero.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtcm.so.1 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbbind_2_0.so.3 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbbind_2_5.so.3 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbb.so.12 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbbind.so.3 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbmalloc_proxy.so.2 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_loader.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_adapter_level_zero_v2.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libhwloc.so.15 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtcm_debug.so.1 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_adapter_opencl.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libumf.so.1 is not a symbolic link
+
+Processing triggers for man-db (2.12.0-4build2) ...
+
+$ git clone https://github.com/mani-skill/ManiSkill.git /content/ManiSkill
+Cloning into '/content/ManiSkill'...
+Updating files:  45% (681/1490)
+Updating files:  46% (686/1490)
+Updating files:  47% (701/1490)
+Updating files:  48% (716/1490)
+Updating files:  49% (731/1490)
+Updating files:  50% (745/1490)
+Updating files:  51% (760/1490)
+Updating files:  52% (775/1490)
+Updating files:  53% (790/1490)
+Updating files:  54% (805/1490)
+Updating files:  55% (820/1490)
+Updating files:  56% (835/1490)
+Updating files:  57% (850/1490)
+Updating files:  58% (865/1490)
+Updating files:  59% (880/1490)
+Updating files:  60% (894/1490)
+Updating files:  61% (909/1490)
+Updating files:  62% (924/1490)
+Updating files:  63% (939/1490)
+Updating files:  64% (954/1490)
+Updating files:  65% (969/1490)
+Updating files:  66% (984/1490)
+Updating files:  67% (999/1490)
+Updating files:  68% (1014/1490)
+Updating files:  69% (1029/1490)
+Updating files:  70% (1043/1490)
+Updating files:  71% (1058/1490)
+Updating files:  72% (1073/1490)
+Updating files:  73% (1088/1490)
+Updating files:  74% (1103/1490)
+Updating files:  75% (1118/1490)
+Updating files:  76% (1133/1490)
+Updating files:  77% (1148/1490)
+Updating files:  78% (1163/1490)
+Updating files:  79% (1178/1490)
+Updating files:  80% (1192/1490)
+Updating files:  81% (1207/1490)
+Updating files:  82% (1222/1490)
+Updating files:  83% (1237/1490)
+Updating files:  84% (1252/1490)
+Updating files:  85% (1267/1490)
+Updating files:  86% (1282/1490)
+Updating files:  87% (1297/1490)
+Updating files:  88% (1312/1490)
+Updating files:  89% (1327/1490)
+Updating files:  90% (1341/1490)
+Updating files:  91% (1356/1490)
+Updating files:  92% (1371/1490)
+Updating files:  93% (1386/1490)
+Updating files:  94% (1401/1490)
+Updating files:  95% (1416/1490)
+Updating files:  96% (1431/1490)
+Updating files:  97% (1446/1490)
+Updating files:  98% (1461/1490)
+Updating files:  99% (1476/1490)
+Updating files: 100% (1490/1490)
+Updating files: 100% (1490/1490), done.
+
+$ git -C /content/ManiSkill checkout --detach a4a4f9272ad64b1564035874b605ceb687b63ed8
+HEAD is now at a4a4f92 [Version] Version bump to 3.0.1
+
+$ /usr/bin/python3 -m pip install -q uv==0.9.11
+
+$ /usr/bin/python3 -m uv venv --python 3.11 --seed /content/pusht_state_bc/python311
+warning: The `--system` flag has no effect, a system Python interpreter is always used in `uv venv`
+Using CPython 3.11.14
+Creating virtual environment with seed packages at: pusht_state_bc/python311
+ + packaging==26.4
+ + pip==26.3
+ + setuptools==84.2.1
+ + wheel==0.48.0
+Activate with: source pusht_state_bc/python311/bin/activate
+
+$ /content/pusht_state_bc/python311/bin/python -m pip install -q torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+
+$ /content/pusht_state_bc/python311/bin/python -m pip install -q --constraint /content/pusht_state_bc/constraints.txt -e /content/ManiSkill numpy sapien h5py tyro 'imageio[ffmpeg]' matplotlib transformers==4.46.3
+  /tmp/pip-build-env-ikb_mg4n/overlay/lib/python3.11/site-packages/setuptools/command/editable_wheel.py:354: BuildBackendWarning: Editable installation.
+  !!
+  
+          ********************************************************************************
+          Please be careful with folders in your working directory with the same
+          name as your package as they may take precedence during imports.
+          ********************************************************************************
+  
+  !!
+    with strategy, WheelFile(wheel_path, "w") as wheel_obj:
+
+$ /content/pusht_state_bc/python311/bin/python -c 'import torch, sapien, mani_skill, transformers; print('"'"'torch'"'"', torch.__version__, '"'"'mani_skill'"'"', mani_skill.__version__, '"'"'transformers'"'"', transformers.__version__); assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))'
+torch 2.6.0+cu124 mani_skill 3.0.1 transformers 4.46.3
+NVIDIA L4
+
+$ /content/pusht_state_bc/python311/bin/python /content/pusht_state_bc/pusht_icl.py --help
+usage: pusht_icl.py [-h] {collect,train,offline,eval} ...
+
+In-context learning (ICL) transformer for variable-goal Push-T (v1 of CODEX_CONTEXT.md).
+
+A frozen GPT-2-style transformer sees demonstrations from one teacher for one hidden goal, then
+controls the robot from a new start. It never sees the goal: the goal fields (state indices 21:24)
+are removed from every state it receives. Teachers (goal-conditioned, they do see the goal):
+Jimmy's PPO and the distilled BC teacher, both in PushTVarGoal-v1.
+
+Subcommands (run with the ManiSkill training interpreter, pusht_vargoal.py next to this file):
+
+    collect   For each split's goal set, roll out each teacher (noise-free) E times per goal
+              from different starts and save {split}_{teacher}.npz: obs [G, E, T, 31],
+              actions [G, E, T, 7], first_success_step [G, E], success_at_end [G, E],
+              goal_xy [G, 2], goal_quadrant [G].
+    train     Train the transformer on prompts sampled on the fly from the train split;
+              validation action error (correct vs wrong-goal context) on the val split.
+              Saves last.pt (for resuming) and best.pt.
+    offline   Teacher-forced action error per context size, correct vs wrong-goal context.
+    eval      Closed-loop success with frozen weights: per split, teacher, context size and
+              condition (correct-goal, wrong-goal, no context), plus the teachers themselves.
+
+Splits (goal positions, PushTVarGoal-v1 quadrants): train Q1-Q3, val Q1-Q3, test_in Q1-Q3
+(unseen goals), test_q4 Q4 (held out from transformer training). Each split's goals are an
+independent seeded draw (continuous positions, so no goal repeats across splits in practice).
+
+Prompt layout (PushT_ICL_Transformer_Spec.md): [s_1, a_1, ..., s_N, a_N, s_q] -> a_q, one token
+per state or action. Support = k whole demonstration episodes of the same teacher and goal,
+each subsampled every `stride` steps ending at the last step (so the final T pose is included),
+N = k * ceil(T / stride). The query state comes from a different episode of the same teacher and
+goal; its label is the teacher's action there.
+
+Pure data/model code imports without ManiSkill (transformers is needed for the model).
+
+positional arguments:
+  {collect,train,offline,eval}
+
+options:
+  -h, --help            show this help message and exit
+
+$ /content/pusht_state_bc/python311/bin/python /content/pusht_state_bc/pusht_icl.py collect --ppo-teacher /content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/ppo_expert.pt --bc-teacher /content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/bc_teacher.pt --splits train val test_in test_q4 --goals 2048 128 128 128 --episodes 10 --out /content/icl_data_v1
+Downloading PhysX GPU library to /root/.sapien/physx/105.1-physx-5.3.1.patch0 from Github. This can take several minutes. If it fails to download, please manually download fhttps://github.com/sapien-sim/physx-precompiled/releases/download/105.1-physx-5.3.1.patch0/linux-so.zip and unzip at /root/.sapien/physx/105.1-physx-5.3.1.patch0.
+Download complete.
+train ppo batch 1/20: success once 95% at end 92%
+train ppo batch 2/20: success once 93% at end 88%
+train ppo batch 3/20: success once 95% at end 90%
+train ppo batch 4/20: success once 94% at end 90%
+train ppo batch 5/20: success once 94% at end 90%
+train ppo batch 6/20: success once 93% at end 90%
+train ppo batch 7/20: success once 92% at end 89%
+train ppo batch 8/20: success once 94% at end 90%
+train ppo batch 9/20: success once 94% at end 90%
+train ppo batch 10/20: success once 94% at end 89%
+train ppo batch 11/20: success once 93% at end 89%
+train ppo batch 12/20: success once 94% at end 88%
+train ppo batch 13/20: success once 95% at end 90%
+train ppo batch 14/20: success once 94% at end 91%
+train ppo batch 15/20: success once 94% at end 89%
+train ppo batch 16/20: success once 93% at end 87%
+train ppo batch 17/20: success once 93% at end 88%
+train ppo batch 18/20: success once 95% at end 89%
+train ppo batch 19/20: success once 94% at end 90%
+train ppo batch 20/20: success once 93% at end 88%
+{"split": "train", "teacher": "ppo", "goals": 2048, "episodes_per_goal": 10, "steps": 100, "env_id": "PushTVarGoal-v1", "quadrants": [1, 2, 3], "goal_seed": 11, "demo_seed_base": 1000000, "noise_std": 0.0, "success_once": 0.93798828125, "success_at_end": 0.89287109375, "teacher_checkpoint": "/content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/ppo_expert.pt"}
+train bc batch 1/20: success once 92% at end 88%
+train bc batch 2/20: success once 92% at end 85%
+train bc batch 3/20: success once 94% at end 87%
+train bc batch 4/20: success once 93% at end 88%
+train bc batch 5/20: success once 95% at end 88%
+train bc batch 6/20: success once 93% at end 86%
+train bc batch 7/20: success once 93% at end 88%
+train bc batch 8/20: success once 92% at end 85%
+train bc batch 9/20: success once 93% at end 86%
+train bc batch 10/20: success once 91% at end 84%
+train bc batch 11/20: success once 93% at end 87%
+train bc batch 12/20: success once 94% at end 87%
+train bc batch 13/20: success once 94% at end 89%
+train bc batch 14/20: success once 93% at end 88%
+train bc batch 15/20: success once 92% at end 87%
+train bc batch 16/20: success once 92% at end 86%
+train bc batch 17/20: success once 94% at end 85%
+train bc batch 18/20: success once 93% at end 87%
+train bc batch 19/20: success once 94% at end 87%
+train bc batch 20/20: success once 93% at end 88%
+{"split": "train", "teacher": "bc", "goals": 2048, "episodes_per_goal": 10, "steps": 100, "env_id": "PushTVarGoal-v1", "quadrants": [1, 2, 3], "goal_seed": 11, "demo_seed_base": 1000000, "noise_std": 0.0, "success_once": 0.931103515625, "success_at_end": 0.86767578125, "teacher_checkpoint": "/content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/bc_teacher.pt"}
+val ppo batch 1/2: success once 94% at end 87%
+val ppo batch 2/2: success once 94% at end 72%
+{"split": "val", "teacher": "ppo", "goals": 128, "episodes_per_goal": 10, "steps": 100, "env_id": "PushTVarGoal-v1", "quadrants": [1, 2, 3], "goal_seed": 12, "demo_seed_base": 2000000, "noise_std": 0.0, "success_once": 0.93515625, "success_at_end": 0.87109375, "teacher_checkpoint": "/content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/ppo_expert.pt"}
+val bc batch 1/2: success once 92% at end 84%
+val bc batch 2/2: success once 93% at end 55%
+{"split": "val", "teacher": "bc", "goals": 128, "episodes_per_goal": 10, "steps": 100, "env_id": "PushTVarGoal-v1", "quadrants": [1, 2, 3], "goal_seed": 12, "demo_seed_base": 2000000, "noise_std": 0.0, "success_once": 0.921875, "success_at_end": 0.8484375, "teacher_checkpoint": "/content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/bc_teacher.pt"}
+test_in ppo batch 1/2: success once 95% at end 92%
+test_in ppo batch 2/2: success once 94% at end 91%
+{"split": "test_in", "teacher": "ppo", "goals": 128, "episodes_per_goal": 10, "steps": 100, "env_id": "PushTVarGoal-v1", "quadrants": [1, 2, 3], "goal_seed": 13, "demo_seed_base": 3000000, "noise_std": 0.0, "success_once": 0.94140625, "success_at_end": 0.9109375, "teacher_checkpoint": "/content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/ppo_expert.pt"}
+test_in bc batch 1/2: success once 94% at end 88%
+test_in bc batch 2/2: success once 93% at end 89%
+{"split": "test_in", "teacher": "bc", "goals": 128, "episodes_per_goal": 10, "steps": 100, "env_id": "PushTVarGoal-v1", "quadrants": [1, 2, 3], "goal_seed": 13, "demo_seed_base": 3000000, "noise_std": 0.0, "success_once": 0.93359375, "success_at_end": 0.8765625, "teacher_checkpoint": "/content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/bc_teacher.pt"}
+test_q4 ppo batch 1/2: success once 95% at end 94%
+test_q4 ppo batch 2/2: success once 94% at end 93%
+{"split": "test_q4", "teacher": "ppo", "goals": 128, "episodes_per_goal": 10, "steps": 100, "env_id": "PushTVarGoal-v1", "quadrants": [4], "goal_seed": 14, "demo_seed_base": 4000000, "noise_std": 0.0, "success_once": 0.94453125, "success_at_end": 0.93359375, "teacher_checkpoint": "/content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/ppo_expert.pt"}
+test_q4 bc batch 1/2: success once 93% at end 90%
+test_q4 bc batch 2/2: success once 94% at end 93%
+{"split": "test_q4", "teacher": "bc", "goals": 128, "episodes_per_goal": 10, "steps": 100, "env_id": "PushTVarGoal-v1", "quadrants": [4], "goal_seed": 14, "demo_seed_base": 4000000, "noise_std": 0.0, "success_once": 0.92734375, "success_at_end": 0.90546875, "teacher_checkpoint": "/content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/bc_teacher.pt"}
+
+$ /content/pusht_state_bc/python311/bin/python /content/pusht_state_bc/pusht_icl.py train --data-dir /content/icl_data_v1 --ks 0 1 2 4 8 --stride 4 --batch-size 64 --lr 0.0001 --seed 0 --out /content/drive/MyDrive/182_final_project/state_bc/20261123T234841Z_icl_transformer_v1/pilot --iters 3000 --eval-every 1000 --log-every 250
+train: 2 teachers x 2048 goals x 10 episodes x 100 steps; val: 128 goals. Context sizes [0, 1, 2, 4, 8] episodes = up to 200 pairs (401 tokens)
+parameters: 9.75M
+iter 250 loss 0.12136 lr 2.50e-05 8.8 it/s (ETA 5 min)
+iter 500 loss 0.03368 lr 5.00e-05 7.7 it/s (ETA 5 min)
+iter 750 loss 0.02870 lr 7.50e-05 8.1 it/s (ETA 5 min)
+iter 1000 loss 0.02673 lr 1.00e-04 7.3 it/s (ETA 5 min)
+iter 1000 val MSE k=0: none 0.0250  k=1: correct 0.0249/wrong 0.0275  k=2: correct 0.0231/wrong 0.0258  k=4: correct 0.0214/wrong 0.0236  k=8: correct 0.0241/wrong 0.0263
+iter 1250 loss 0.02411 lr 9.66e-05 6.5 it/s (ETA 4 min)
+iter 1500 loss 0.02228 lr 8.69e-05 7.9 it/s (ETA 3 min)
+iter 1750 loss 0.02027 lr 7.23e-05 7.6 it/s (ETA 3 min)
+iter 2000 loss 0.01874 lr 5.51e-05 7.7 it/s (ETA 2 min)
+iter 2000 val MSE k=0: none 0.0182  k=1: correct 0.0184/wrong 0.0208  k=2: correct 0.0168/wrong 0.0194  k=4: correct 0.0150/wrong 0.0172  k=8: correct 0.0173/wrong 0.0200
+iter 2250 loss 0.01712 lr 3.78e-05 5.9 it/s (ETA 2 min)
+iter 2500 loss 0.01644 lr 2.32e-05 8.0 it/s (ETA 1 min)
+iter 2750 loss 0.01572 lr 1.35e-05 7.0 it/s (ETA 1 min)
+iter 3000 loss 0.01506 lr 1.00e-05 7.7 it/s (ETA 0 min)
+iter 3000 val MSE k=0: none 0.0157  k=1: correct 0.0152/wrong 0.0189  k=2: correct 0.0142/wrong 0.0181  k=4: correct 0.0128/wrong 0.0163  k=8: correct 0.0144/wrong 0.0182
+Done. Best validation score 0.01444
+
+$ /content/pusht_state_bc/python311/bin/python /content/pusht_state_bc/pusht_icl.py eval --ppo-teacher /content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/ppo_expert.pt --bc-teacher /content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/bc_teacher.pt --checkpoint /content/drive/MyDrive/182_final_project/state_bc/20261123T234841Z_icl_transformer_v1/pilot/final.pt --data-dir /content/icl_data_v1 --splits val --context-teachers ppo --ks 0 4 --stride 4 --goals 64 --starts 2 --out /content/drive/MyDrive/182_final_project/state_bc/20261123T234841Z_icl_transformer_v1/pilot/closed_loop_val.json
+val      ppo-context k=0 none    once 0% end 0%
+val      ppo-context k=4 correct once 0% end 0%
+val      ppo-context k=4 wrong   once 0% end 0%
+val      ppo teacher (sees goal)  once 94% end 94%
+val      bc teacher (sees goal)  once 91% end 83%
+
+$ /content/pusht_state_bc/python311/bin/python /content/pusht_state_bc/pusht_icl.py train --data-dir /content/icl_data_v1 --ks 0 1 2 4 8 --stride 4 --batch-size 64 --lr 0.0001 --seed 0 --out /content/drive/MyDrive/182_final_project/state_bc/icl_runs/transformer_v1_seed0 --iters 100000 --eval-every 2500 --log-every 500
+train: 2 teachers x 2048 goals x 10 episodes x 100 steps; val: 128 goals. Context sizes [0, 1, 2, 4, 8] episodes = up to 200 pairs (401 tokens)
+parameters: 9.75M
+iter 500 loss 0.07752 lr 5.00e-05 8.2 it/s (ETA 202 min)
+iter 1000 loss 0.02772 lr 1.00e-04 7.7 it/s (ETA 215 min)
+iter 1500 loss 0.02334 lr 1.00e-04 8.1 it/s (ETA 203 min)
+iter 2000 loss 0.02024 lr 1.00e-04 7.6 it/s (ETA 215 min)
+iter 2500 loss 0.01791 lr 9.99e-05 7.7 it/s (ETA 212 min)
+iter 2500 val MSE k=0: none 0.0194  k=1: correct 0.0172/wrong 0.0216  k=2: correct 0.0166/wrong 0.0214  k=4: correct 0.0154/wrong 0.0199  k=8: correct 0.0176/wrong 0.0220
+iter 3000 loss 0.01637 lr 9.99e-05 6.5 it/s (ETA 249 min)
+iter 3500 loss 0.01533 lr 9.99e-05 7.5 it/s (ETA 216 min)
+iter 4000 loss 0.01418 lr 9.98e-05 7.1 it/s (ETA 224 min)
+iter 4500 loss 0.01320 lr 9.97e-05 8.0 it/s (ETA 200 min)
+iter 5000 loss 0.01263 lr 9.96e-05 7.9 it/s (ETA 200 min)
+iter 5000 val MSE k=0: none 0.0153  k=1: correct 0.0128/wrong 0.0227  k=2: correct 0.0116/wrong 0.0230  k=4: correct 0.0109/wrong 0.0231  k=8: correct 0.0133/wrong 0.0253
+iter 5500 loss 0.01222 lr 9.95e-05 6.7 it/s (ETA 235 min)
+iter 6000 loss 0.01168 lr 9.94e-05 7.8 it/s (ETA 200 min)
+iter 6500 loss 0.01129 lr 9.93e-05 7.6 it/s (ETA 205 min)
+iter 7000 loss 0.01085 lr 9.92e-05 7.7 it/s (ETA 202 min)
+iter 7500 loss 0.01012 lr 9.90e-05 7.7 it/s (ETA 199 min)
+iter 7500 val MSE k=0: none 0.0121  k=1: correct 0.0101/wrong 0.0305  k=2: correct 0.0090/wrong 0.0337  k=4: correct 0.0079/wrong 0.0349  k=8: correct 0.0097/wrong 0.0360
+iter 8000 loss 0.00997 lr 9.89e-05 6.7 it/s (ETA 230 min)
+iter 8500 loss 0.00945 lr 9.87e-05 7.7 it/s (ETA 199 min)
+iter 9000 loss 0.00923 lr 9.86e-05 7.8 it/s (ETA 195 min)
+iter 9500 loss 0.00888 lr 9.84e-05 7.7 it/s (ETA 197 min)
+iter 10000 loss 0.00853 lr 9.82e-05 7.6 it/s (ETA 198 min)
+iter 10000 val MSE k=0: none 0.0104  k=1: correct 0.0087/wrong 0.0352  k=2: correct 0.0075/wrong 0.0410  k=4: correct 0.0068/wrong 0.0442  k=8: correct 0.0078/wrong 0.0442
+iter 10500 loss 0.00841 lr 9.80e-05 6.6 it/s (ETA 227 min)
+iter 11000 loss 0.00801 lr 9.78e-05 8.1 it/s (ETA 184 min)
+iter 11500 loss 0.00793 lr 9.75e-05 7.3 it/s (ETA 203 min)
+iter 12000 loss 0.00781 lr 9.73e-05 7.6 it/s (ETA 194 min)
+iter 12500 loss 0.00758 lr 9.70e-05 7.5 it/s (ETA 194 min)
+iter 12500 val MSE k=0: none 0.0102  k=1: correct 0.0079/wrong 0.0371  k=2: correct 0.0068/wrong 0.0418  k=4: correct 0.0061/wrong 0.0448  k=8: correct 0.0071/wrong 0.0461
+iter 13000 loss 0.00736 lr 9.68e-05 6.9 it/s (ETA 211 min)
+iter 13500 loss 0.00715 lr 9.65e-05 7.9 it/s (ETA 182 min)
+iter 14000 loss 0.00702 lr 9.62e-05 7.5 it/s (ETA 192 min)
+iter 14500 loss 0.00695 lr 9.59e-05 8.1 it/s (ETA 176 min)
+iter 15000 loss 0.00682 lr 9.56e-05 7.5 it/s (ETA 189 min)
+iter 15000 val MSE k=0: none 0.0095  k=1: correct 0.0067/wrong 0.0394  k=2: correct 0.0060/wrong 0.0476  k=4: correct 0.0051/wrong 0.0534  k=8: correct 0.0063/wrong 0.0522
+iter 15500 loss 0.00664 lr 9.53e-05 7.0 it/s (ETA 201 min)
+iter 16000 loss 0.00669 lr 9.50e-05 7.9 it/s (ETA 177 min)
+iter 16500 loss 0.00639 lr 9.47e-05 8.0 it/s (ETA 175 min)
+iter 17000 loss 0.00640 lr 9.43e-05 7.5 it/s (ETA 184 min)
+iter 17500 loss 0.00630 lr 9.40e-05 7.7 it/s (ETA 179 min)
+iter 17500 val MSE k=0: none 0.0086  k=1: correct 0.0067/wrong 0.0455  k=2: correct 0.0054/wrong 0.0530  k=4: correct 0.0049/wrong 0.0576  k=8: correct 0.0060/wrong 0.0564
+iter 18000 loss 0.00617 lr 9.36e-05 6.5 it/s (ETA 210 min)
+iter 18500 loss 0.00590 lr 9.32e-05 7.9 it/s (ETA 172 min)
+iter 19000 loss 0.00595 lr 9.29e-05 8.0 it/s (ETA 168 min)
+iter 19500 loss 0.00582 lr 9.25e-05 7.9 it/s (ETA 170 min)
+iter 20000 loss 0.00565 lr 9.21e-05 7.0 it/s (ETA 191 min)
+iter 20000 val MSE k=0: none 0.0078  k=1: correct 0.0057/wrong 0.0544  k=2: correct 0.0048/wrong 0.0623  k=4: correct 0.0043/wrong 0.0682  k=8: correct 0.0053/wrong 0.0678
+iter 20500 loss 0.00558 lr 9.17e-05 7.0 it/s (ETA 190 min)
+iter 21000 loss 0.00546 lr 9.12e-05 7.6 it/s (ETA 173 min)
+iter 21500 loss 0.00550 lr 9.08e-05 7.5 it/s (ETA 176 min)
+iter 22000 loss 0.00539 lr 9.04e-05 7.5 it/s (ETA 173 min)
+iter 22500 loss 0.00551 lr 8.99e-05 7.5 it/s (ETA 171 min)
+iter 22500 val MSE k=0: none 0.0078  k=1: correct 0.0056/wrong 0.0600  k=2: correct 0.0048/wrong 0.0681  k=4: correct 0.0043/wrong 0.0757  k=8: correct 0.0049/wrong 0.0721
+iter 23000 loss 0.00528 lr 8.95e-05 7.0 it/s (ETA 182 min)
+iter 23500 loss 0.00498 lr 8.90e-05 7.4 it/s (ETA 173 min)
+iter 24000 loss 0.00514 lr 8.85e-05 8.1 it/s (ETA 157 min)
+iter 24500 loss 0.00492 lr 8.81e-05 7.5 it/s (ETA 169 min)
+iter 25000 loss 0.00499 lr 8.76e-05 7.6 it/s (ETA 164 min)
+iter 25000 val MSE k=0: none 0.0078  k=1: correct 0.0054/wrong 0.0679  k=2: correct 0.0046/wrong 0.0796  k=4: correct 0.0042/wrong 0.0879  k=8: correct 0.0048/wrong 0.0842
+iter 25500 loss 0.00513 lr 8.71e-05 7.0 it/s (ETA 178 min)
+iter 26000 loss 0.00489 lr 8.66e-05 7.5 it/s (ETA 164 min)
+iter 26500 loss 0.00492 lr 8.61e-05 7.7 it/s (ETA 160 min)
+iter 27000 loss 0.00482 lr 8.55e-05 7.7 it/s (ETA 157 min)
+iter 27500 loss 0.00469 lr 8.50e-05 7.6 it/s (ETA 159 min)
+iter 27500 val MSE k=0: none 0.0071  k=1: correct 0.0044/wrong 0.0708  k=2: correct 0.0039/wrong 0.0808  k=4: correct 0.0034/wrong 0.0888  k=8: correct 0.0040/wrong 0.0864
+iter 28000 loss 0.00477 lr 8.45e-05 6.4 it/s (ETA 186 min)
+iter 28500 loss 0.00461 lr 8.39e-05 7.7 it/s (ETA 154 min)
+iter 29000 loss 0.00457 lr 8.34e-05 7.0 it/s (ETA 169 min)
+iter 29500 loss 0.00468 lr 8.28e-05 7.3 it/s (ETA 160 min)
+iter 30000 loss 0.00452 lr 8.23e-05 8.1 it/s (ETA 144 min)
+iter 30000 val MSE k=0: none 0.0072  k=1: correct 0.0044/wrong 0.0723  k=2: correct 0.0038/wrong 0.0814  k=4: correct 0.0033/wrong 0.0904  k=8: correct 0.0038/wrong 0.0882
+iter 30500 loss 0.00447 lr 8.17e-05 6.5 it/s (ETA 178 min)
+iter 31000 loss 0.00437 lr 8.11e-05 7.8 it/s (ETA 148 min)
+iter 31500 loss 0.00430 lr 8.05e-05 6.9 it/s (ETA 165 min)
+iter 32000 loss 0.00436 lr 7.99e-05 7.3 it/s (ETA 155 min)
+iter 32500 loss 0.00421 lr 7.93e-05 8.2 it/s (ETA 137 min)
+iter 32500 val MSE k=0: none 0.0070  k=1: correct 0.0044/wrong 0.0753  k=2: correct 0.0037/wrong 0.0850  k=4: correct 0.0033/wrong 0.0954  k=8: correct 0.0037/wrong 0.0928
+iter 33000 loss 0.00430 lr 7.87e-05 6.4 it/s (ETA 174 min)
+iter 33500 loss 0.00432 lr 7.81e-05 8.0 it/s (ETA 138 min)
+iter 34000 loss 0.00409 lr 7.75e-05 7.1 it/s (ETA 155 min)
+iter 34500 loss 0.00415 lr 7.69e-05 7.6 it/s (ETA 143 min)
+iter 35000 loss 0.00413 lr 7.63e-05 8.0 it/s (ETA 136 min)
+iter 35000 val MSE k=0: none 0.0068  k=1: correct 0.0040/wrong 0.0750  k=2: correct 0.0036/wrong 0.0866  k=4: correct 0.0030/wrong 0.0936  k=8: correct 0.0037/wrong 0.0916
+iter 35500 loss 0.00398 lr 7.56e-05 6.6 it/s (ETA 163 min)
+iter 36000 loss 0.00408 lr 7.50e-05 7.9 it/s (ETA 134 min)
+iter 36500 loss 0.00403 lr 7.43e-05 7.5 it/s (ETA 142 min)
+iter 37000 loss 0.00400 lr 7.37e-05 7.2 it/s (ETA 146 min)
+iter 37500 loss 0.00384 lr 7.30e-05 7.3 it/s (ETA 143 min)
+iter 37500 val MSE k=0: none 0.0068  k=1: correct 0.0037/wrong 0.0816  k=2: correct 0.0032/wrong 0.0920  k=4: correct 0.0028/wrong 0.1003  k=8: correct 0.0032/wrong 0.0976
+iter 38000 loss 0.00385 lr 7.24e-05 6.6 it/s (ETA 158 min)
+iter 38500 loss 0.00383 lr 7.17e-05 7.2 it/s (ETA 143 min)
+iter 39000 loss 0.00371 lr 7.11e-05 7.4 it/s (ETA 138 min)
+iter 39500 loss 0.00384 lr 7.04e-05 7.5 it/s (ETA 135 min)
+iter 40000 loss 0.00371 lr 6.97e-05 7.6 it/s (ETA 132 min)
+iter 40000 val MSE k=0: none 0.0063  k=1: correct 0.0039/wrong 0.0826  k=2: correct 0.0032/wrong 0.0918  k=4: correct 0.0030/wrong 0.0994  k=8: correct 0.0035/wrong 0.0979
+iter 40500 loss 0.00372 lr 6.90e-05 6.7 it/s (ETA 147 min)
+iter 41000 loss 0.00369 lr 6.84e-05 7.1 it/s (ETA 138 min)
+iter 41500 loss 0.00362 lr 6.77e-05 7.5 it/s (ETA 130 min)
+iter 42000 loss 0.00360 lr 6.70e-05 7.4 it/s (ETA 131 min)
+iter 42500 loss 0.00365 lr 6.63e-05 7.6 it/s (ETA 127 min)
+iter 42500 val MSE k=0: none 0.0065  k=1: correct 0.0036/wrong 0.0925  k=2: correct 0.0032/wrong 0.1046  k=4: correct 0.0028/wrong 0.1137  k=8: correct 0.0031/wrong 0.1095
+iter 43000 loss 0.00355 lr 6.56e-05 6.6 it/s (ETA 145 min)
+iter 43500 loss 0.00348 lr 6.49e-05 7.9 it/s (ETA 119 min)
+iter 44000 loss 0.00350 lr 6.42e-05 7.4 it/s (ETA 126 min)
+iter 44500 loss 0.00357 lr 6.35e-05 8.1 it/s (ETA 114 min)
+iter 45000 loss 0.00361 lr 6.28e-05 7.6 it/s (ETA 121 min)
+iter 45000 val MSE k=0: none 0.0062  k=1: correct 0.0034/wrong 0.0886  k=2: correct 0.0030/wrong 0.0985  k=4: correct 0.0026/wrong 0.1071  k=8: correct 0.0030/wrong 0.1044
+iter 45500 loss 0.00342 lr 6.21e-05 6.6 it/s (ETA 139 min)
+iter 46000 loss 0.00341 lr 6.14e-05 7.8 it/s (ETA 115 min)
+iter 46500 loss 0.00328 lr 6.07e-05 8.3 it/s (ETA 107 min)
+iter 47000 loss 0.00333 lr 6.00e-05 7.6 it/s (ETA 117 min)
+iter 47500 loss 0.00331 lr 5.93e-05 7.8 it/s (ETA 112 min)
+iter 47500 val MSE k=0: none 0.0060  k=1: correct 0.0032/wrong 0.0909  k=2: correct 0.0027/wrong 0.1019  k=4: correct 0.0024/wrong 0.1100  k=8: correct 0.0027/wrong 0.1063
+iter 48000 loss 0.00347 lr 5.86e-05 6.8 it/s (ETA 128 min)
+iter 48500 loss 0.00332 lr 5.79e-05 7.3 it/s (ETA 117 min)
+iter 49000 loss 0.00317 lr 5.71e-05 7.1 it/s (ETA 120 min)
+iter 49500 loss 0.00326 lr 5.64e-05 8.2 it/s (ETA 103 min)
+iter 50000 loss 0.00323 lr 5.57e-05 7.7 it/s (ETA 109 min)
+iter 50000 val MSE k=0: none 0.0059  k=1: correct 0.0031/wrong 0.0937  k=2: correct 0.0027/wrong 0.1058  k=4: correct 0.0024/wrong 0.1144  k=8: correct 0.0027/wrong 0.1114
+iter 50500 loss 0.00324 lr 5.50e-05 6.8 it/s (ETA 121 min)
+iter 51000 loss 0.00319 lr 5.43e-05 8.1 it/s (ETA 101 min)
+iter 51500 loss 0.00313 lr 5.36e-05 8.1 it/s (ETA 100 min)
+iter 52000 loss 0.00309 lr 5.29e-05 8.0 it/s (ETA 101 min)
+iter 52500 loss 0.00306 lr 5.21e-05 7.6 it/s (ETA 104 min)
+iter 52500 val MSE k=0: none 0.0056  k=1: correct 0.0030/wrong 0.0993  k=2: correct 0.0026/wrong 0.1116  k=4: correct 0.0023/wrong 0.1206  k=8: correct 0.0025/wrong 0.1158
+iter 53000 loss 0.00308 lr 5.14e-05 7.0 it/s (ETA 113 min)
+iter 53500 loss 0.00311 lr 5.07e-05 7.7 it/s (ETA 101 min)
+iter 54000 loss 0.00316 lr 5.00e-05 7.6 it/s (ETA 101 min)
+iter 54500 loss 0.00315 lr 4.93e-05 7.4 it/s (ETA 103 min)
+iter 55000 loss 0.00304 lr 4.86e-05 7.9 it/s (ETA 95 min)
+iter 55000 val MSE k=0: none 0.0055  k=1: correct 0.0029/wrong 0.1025  k=2: correct 0.0025/wrong 0.1150  k=4: correct 0.0023/wrong 0.1244  k=8: correct 0.0026/wrong 0.1203
+iter 55500 loss 0.00307 lr 4.79e-05 7.0 it/s (ETA 107 min)
+iter 56000 loss 0.00297 lr 4.72e-05 7.4 it/s (ETA 99 min)
+iter 56500 loss 0.00293 lr 4.65e-05 7.2 it/s (ETA 100 min)
+iter 57000 loss 0.00299 lr 4.58e-05 7.4 it/s (ETA 97 min)
+iter 57500 loss 0.00283 lr 4.51e-05 6.9 it/s (ETA 103 min)
+iter 57500 val MSE k=0: none 0.0057  k=1: correct 0.0027/wrong 0.1002  k=2: correct 0.0025/wrong 0.1134  k=4: correct 0.0022/wrong 0.1224  k=8: correct 0.0025/wrong 0.1180
+iter 58000 loss 0.00300 lr 4.44e-05 6.6 it/s (ETA 107 min)
+iter 58500 loss 0.00286 lr 4.37e-05 7.8 it/s (ETA 88 min)
+iter 59000 loss 0.00291 lr 4.30e-05 7.4 it/s (ETA 93 min)
+iter 59500 loss 0.00286 lr 4.23e-05 7.1 it/s (ETA 95 min)
+iter 60000 loss 0.00277 lr 4.16e-05 7.6 it/s (ETA 88 min)
+iter 60000 val MSE k=0: none 0.0054  k=1: correct 0.0027/wrong 0.1025  k=2: correct 0.0024/wrong 0.1159  k=4: correct 0.0020/wrong 0.1250  k=8: correct 0.0022/wrong 0.1200
+iter 60500 loss 0.00289 lr 4.10e-05 6.9 it/s (ETA 96 min)
+iter 61000 loss 0.00296 lr 4.03e-05 7.5 it/s (ETA 87 min)
+iter 61500 loss 0.00275 lr 3.96e-05 8.4 it/s (ETA 77 min)
+iter 62000 loss 0.00276 lr 3.89e-05 7.7 it/s (ETA 82 min)
+iter 62500 loss 0.00275 lr 3.83e-05 7.5 it/s (ETA 84 min)
+iter 62500 val MSE k=0: none 0.0052  k=1: correct 0.0026/wrong 0.1033  k=2: correct 0.0023/wrong 0.1156  k=4: correct 0.0019/wrong 0.1244  k=8: correct 0.0023/wrong 0.1200
+iter 63000 loss 0.00272 lr 3.76e-05 6.8 it/s (ETA 90 min)
+iter 63500 loss 0.00269 lr 3.70e-05 7.2 it/s (ETA 85 min)
+iter 64000 loss 0.00271 lr 3.63e-05 7.4 it/s (ETA 81 min)
+iter 64500 loss 0.00268 lr 3.57e-05 7.3 it/s (ETA 81 min)
+iter 65000 loss 0.00266 lr 3.50e-05 7.4 it/s (ETA 79 min)
+iter 65000 val MSE k=0: none 0.0053  k=1: correct 0.0026/wrong 0.1024  k=2: correct 0.0023/wrong 0.1133  k=4: correct 0.0020/wrong 0.1214  k=8: correct 0.0023/wrong 0.1180
+iter 65500 loss 0.00254 lr 3.44e-05 6.5 it/s (ETA 88 min)
+iter 66000 loss 0.00268 lr 3.37e-05 7.5 it/s (ETA 75 min)
+iter 66500 loss 0.00265 lr 3.31e-05 7.8 it/s (ETA 72 min)
+iter 67000 loss 0.00269 lr 3.25e-05 7.4 it/s (ETA 74 min)
+iter 67500 loss 0.00259 lr 3.19e-05 8.0 it/s (ETA 68 min)
+iter 67500 val MSE k=0: none 0.0049  k=1: correct 0.0025/wrong 0.1090  k=2: correct 0.0022/wrong 0.1215  k=4: correct 0.0019/wrong 0.1311  k=8: correct 0.0022/wrong 0.1263
+iter 68000 loss 0.00258 lr 3.13e-05 6.7 it/s (ETA 80 min)
+iter 68500 loss 0.00271 lr 3.07e-05 7.5 it/s (ETA 70 min)
+iter 69000 loss 0.00262 lr 3.01e-05 8.0 it/s (ETA 65 min)
+iter 69500 loss 0.00258 lr 2.95e-05 7.9 it/s (ETA 64 min)
+iter 70000 loss 0.00260 lr 2.89e-05 7.6 it/s (ETA 66 min)
+iter 70000 val MSE k=0: none 0.0049  k=1: correct 0.0023/wrong 0.1108  k=2: correct 0.0020/wrong 0.1233  k=4: correct 0.0018/wrong 0.1340  k=8: correct 0.0021/wrong 0.1287
+iter 70500 loss 0.00260 lr 2.83e-05 7.0 it/s (ETA 70 min)
+iter 71000 loss 0.00245 lr 2.77e-05 7.9 it/s (ETA 61 min)
+iter 71500 loss 0.00266 lr 2.72e-05 8.1 it/s (ETA 58 min)
+iter 72000 loss 0.00245 lr 2.66e-05 7.6 it/s (ETA 61 min)
+iter 72500 loss 0.00253 lr 2.61e-05 7.0 it/s (ETA 65 min)
+iter 72500 val MSE k=0: none 0.0049  k=1: correct 0.0022/wrong 0.1102  k=2: correct 0.0020/wrong 0.1232  k=4: correct 0.0017/wrong 0.1329  k=8: correct 0.0021/wrong 0.1275
+iter 73000 loss 0.00253 lr 2.55e-05 6.2 it/s (ETA 72 min)
+iter 73500 loss 0.00250 lr 2.50e-05 7.5 it/s (ETA 59 min)
+iter 74000 loss 0.00252 lr 2.45e-05 8.1 it/s (ETA 54 min)
+iter 74500 loss 0.00250 lr 2.39e-05 7.5 it/s (ETA 57 min)
+iter 75000 loss 0.00250 lr 2.34e-05 8.1 it/s (ETA 52 min)
+iter 75000 val MSE k=0: none 0.0048  k=1: correct 0.0022/wrong 0.1081  k=2: correct 0.0020/wrong 0.1199  k=4: correct 0.0017/wrong 0.1298  k=8: correct 0.0020/wrong 0.1244
+iter 75500 loss 0.00239 lr 2.29e-05 6.3 it/s (ETA 65 min)
+iter 76000 loss 0.00244 lr 2.24e-05 7.1 it/s (ETA 56 min)
+iter 76500 loss 0.00244 lr 2.19e-05 7.9 it/s (ETA 49 min)
+iter 77000 loss 0.00242 lr 2.15e-05 7.5 it/s (ETA 51 min)
+iter 77500 loss 0.00246 lr 2.10e-05 7.3 it/s (ETA 52 min)
+iter 77500 val MSE k=0: none 0.0048  k=1: correct 0.0023/wrong 0.1129  k=2: correct 0.0020/wrong 0.1256  k=4: correct 0.0017/wrong 0.1362  k=8: correct 0.0020/wrong 0.1302
+iter 78000 loss 0.00245 lr 2.05e-05 7.1 it/s (ETA 51 min)
+iter 78500 loss 0.00236 lr 2.01e-05 7.2 it/s (ETA 50 min)
+iter 79000 loss 0.00246 lr 1.96e-05 7.8 it/s (ETA 45 min)
+iter 79500 loss 0.00228 lr 1.92e-05 7.9 it/s (ETA 43 min)
+iter 80000 loss 0.00244 lr 1.88e-05 7.5 it/s (ETA 44 min)
+iter 80000 val MSE k=0: none 0.0051  k=1: correct 0.0022/wrong 0.1137  k=2: correct 0.0020/wrong 0.1267  k=4: correct 0.0016/wrong 0.1375  k=8: correct 0.0020/wrong 0.1315
+iter 80500 loss 0.00233 lr 1.83e-05 6.8 it/s (ETA 48 min)
+iter 81000 loss 0.00224 lr 1.79e-05 7.1 it/s (ETA 44 min)
+iter 81500 loss 0.00236 lr 1.75e-05 7.9 it/s (ETA 39 min)
+iter 82000 loss 0.00248 lr 1.71e-05 8.0 it/s (ETA 37 min)
+iter 82500 loss 0.00228 lr 1.68e-05 7.4 it/s (ETA 39 min)
+iter 82500 val MSE k=0: none 0.0047  k=1: correct 0.0021/wrong 0.1101  k=2: correct 0.0019/wrong 0.1221  k=4: correct 0.0017/wrong 0.1319  k=8: correct 0.0019/wrong 0.1270
+iter 83000 loss 0.00227 lr 1.64e-05 7.1 it/s (ETA 40 min)
+iter 83500 loss 0.00235 lr 1.60e-05 7.9 it/s (ETA 35 min)
+iter 84000 loss 0.00223 lr 1.57e-05 7.5 it/s (ETA 36 min)
+iter 84500 loss 0.00222 lr 1.53e-05 7.2 it/s (ETA 36 min)
+iter 85000 loss 0.00240 lr 1.50e-05 8.1 it/s (ETA 31 min)
+iter 85000 val MSE k=0: none 0.0046  k=1: correct 0.0021/wrong 0.1149  k=2: correct 0.0019/wrong 0.1275  k=4: correct 0.0017/wrong 0.1380  k=8: correct 0.0019/wrong 0.1324
+iter 85500 loss 0.00229 lr 1.47e-05 6.7 it/s (ETA 36 min)
+iter 86000 loss 0.00228 lr 1.44e-05 7.8 it/s (ETA 30 min)
+iter 86500 loss 0.00226 lr 1.41e-05 7.6 it/s (ETA 29 min)
+iter 87000 loss 0.00226 lr 1.38e-05 7.4 it/s (ETA 29 min)
+iter 87500 loss 0.00233 lr 1.35e-05 7.8 it/s (ETA 27 min)
+iter 87500 val MSE k=0: none 0.0044  k=1: correct 0.0021/wrong 0.1126  k=2: correct 0.0018/wrong 0.1252  k=4: correct 0.0016/wrong 0.1350  k=8: correct 0.0018/wrong 0.1300
+iter 88000 loss 0.00223 lr 1.32e-05 6.7 it/s (ETA 30 min)
+iter 88500 loss 0.00216 lr 1.30e-05 7.6 it/s (ETA 25 min)
+iter 89000 loss 0.00229 lr 1.27e-05 7.6 it/s (ETA 24 min)
+iter 89500 loss 0.00228 lr 1.25e-05 7.8 it/s (ETA 22 min)
+iter 90000 loss 0.00230 lr 1.22e-05 7.4 it/s (ETA 22 min)
+iter 90000 val MSE k=0: none 0.0044  k=1: correct 0.0020/wrong 0.1161  k=2: correct 0.0018/wrong 0.1285  k=4: correct 0.0016/wrong 0.1393  k=8: correct 0.0017/wrong 0.1335
+iter 90500 loss 0.00223 lr 1.20e-05 7.1 it/s (ETA 22 min)
+iter 91000 loss 0.00221 lr 1.18e-05 8.2 it/s (ETA 18 min)
+iter 91500 loss 0.00221 lr 1.16e-05 8.6 it/s (ETA 16 min)
+iter 92000 loss 0.00219 lr 1.14e-05 7.6 it/s (ETA 18 min)
+iter 92500 loss 0.00218 lr 1.13e-05 7.9 it/s (ETA 16 min)
+iter 92500 val MSE k=0: none 0.0043  k=1: correct 0.0020/wrong 0.1186  k=2: correct 0.0018/wrong 0.1315  k=4: correct 0.0015/wrong 0.1424  k=8: correct 0.0017/wrong 0.1367
+iter 93000 loss 0.00223 lr 1.11e-05 6.9 it/s (ETA 17 min)
+iter 93500 loss 0.00218 lr 1.10e-05 7.5 it/s (ETA 14 min)
+iter 94000 loss 0.00231 lr 1.08e-05 8.0 it/s (ETA 13 min)
+iter 94500 loss 0.00232 lr 1.07e-05 7.5 it/s (ETA 12 min)
+iter 95000 loss 0.00221 lr 1.06e-05 7.2 it/s (ETA 12 min)
+iter 95000 val MSE k=0: none 0.0046  k=1: correct 0.0020/wrong 0.1181  k=2: correct 0.0017/wrong 0.1314  k=4: correct 0.0015/wrong 0.1423  k=8: correct 0.0017/wrong 0.1362
+iter 95500 loss 0.00217 lr 1.05e-05 6.5 it/s (ETA 12 min)
+iter 96000 loss 0.00211 lr 1.04e-05 7.8 it/s (ETA 9 min)
+iter 96500 loss 0.00226 lr 1.03e-05 8.0 it/s (ETA 7 min)
+iter 97000 loss 0.00225 lr 1.02e-05 7.8 it/s (ETA 6 min)
+iter 97500 loss 0.00220 lr 1.01e-05 7.6 it/s (ETA 5 min)
+iter 97500 val MSE k=0: none 0.0045  k=1: correct 0.0020/wrong 0.1167  k=2: correct 0.0017/wrong 0.1306  k=4: correct 0.0015/wrong 0.1414  k=8: correct 0.0017/wrong 0.1352
+iter 98000 loss 0.00210 lr 1.01e-05 6.6 it/s (ETA 5 min)
+iter 98500 loss 0.00214 lr 1.01e-05 7.7 it/s (ETA 3 min)
+iter 99000 loss 0.00216 lr 1.00e-05 7.9 it/s (ETA 2 min)
+iter 99500 loss 0.00208 lr 1.00e-05 7.4 it/s (ETA 1 min)
+iter 100000 loss 0.00218 lr 1.00e-05 7.2 it/s (ETA 0 min)
+iter 100000 val MSE k=0: none 0.0044  k=1: correct 0.0020/wrong 0.1164  k=2: correct 0.0017/wrong 0.1300  k=4: correct 0.0015/wrong 0.1399  k=8: correct 0.0017/wrong 0.1343
+Done. Best validation score 0.00227
+
+$ /content/pusht_state_bc/python311/bin/python /content/pusht_state_bc/pusht_icl.py offline --checkpoint /content/drive/MyDrive/182_final_project/state_bc/icl_runs/transformer_v1_seed0/best.pt --data-dir /content/icl_data_v1 --splits val test_in test_q4 --ks 0 1 2 4 8 --stride 4 --out /content/drive/MyDrive/182_final_project/state_bc/20261123T234841Z_icl_transformer_v1/final_eval/action_error.json
+val {"0": {"none": 0.00453224839293398}, "1": {"correct": 0.0019229113240726292, "wrong": 0.11714299116283655}, "2": {"correct": 0.0016876899171620607, "wrong": 0.12847394216805696}, "4": {"correct": 0.0015091562818270177, "wrong": 0.13513369672000408}, "8": {"correct": 0.0017062192637240514, "wrong": 0.12722009140998125}}
+test_in {"0": {"none": 0.00438993243733421}, "1": {"correct": 0.001973885271581821, "wrong": 0.1254018424078822}, "2": {"correct": 0.00172371331427712, "wrong": 0.13656659424304962}, "4": {"correct": 0.0015910720103420317, "wrong": 0.14215558767318726}, "8": {"correct": 0.0018127729272237048, "wrong": 0.13437056448310614}}
+test_q4 {"0": {"none": 0.007566712447442114}, "1": {"correct": 0.0030662600765936077, "wrong": 0.0774748045951128}, "2": {"correct": 0.0029076358187012374, "wrong": 0.08216504286974669}, "4": {"correct": 0.0026955364737659693, "wrong": 0.08783879410475492}, "8": {"correct": 0.004148270149016753, "wrong": 0.08482969272881746}}
+
+$ /content/pusht_state_bc/python311/bin/python /content/pusht_state_bc/pusht_icl.py eval --ppo-teacher /content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/ppo_expert.pt --bc-teacher /content/drive/MyDrive/182_final_project/state_bc/20261123T230947Z_run4_bc_from_jimmy/teachers/bc_teacher.pt --checkpoint /content/drive/MyDrive/182_final_project/state_bc/icl_runs/transformer_v1_seed0/best.pt --data-dir /content/icl_data_v1 --splits test_in test_q4 --ks 0 1 2 4 8 --stride 4 --goals 128 --starts 4 --out /content/drive/MyDrive/182_final_project/state_bc/20261123T234841Z_icl_transformer_v1/final_eval/closed_loop.json
+test_in  ppo-context k=0 none    once 1% end 0%
+test_in  ppo-context k=1 correct once 90% end 82%
+test_in  ppo-context k=1 wrong   once 2% end 1%
+test_in  ppo-context k=2 correct once 92% end 88%
+test_in  ppo-context k=2 wrong   once 2% end 1%
+test_in  ppo-context k=4 correct once 91% end 88%
+test_in  ppo-context k=4 wrong   once 1% end 1%
+test_in  ppo-context k=8 correct once 92% end 89%
+test_in  ppo-context k=8 wrong   once 2% end 1%
+test_in  bc-context k=0 none    once 1% end 0%
+test_in  bc-context k=1 correct once 91% end 84%
+test_in  bc-context k=1 wrong   once 2% end 0%
+test_in  bc-context k=2 correct once 92% end 88%
+test_in  bc-context k=2 wrong   once 2% end 1%
+test_in  bc-context k=4 correct once 92% end 88%
+test_in  bc-context k=4 wrong   once 2% end 1%
+test_in  bc-context k=8 correct once 90% end 84%
+test_in  bc-context k=8 wrong   once 1% end 1%
+test_in  ppo teacher (sees goal)  once 94% end 89%
+test_in  bc teacher (sees goal)  once 92% end 86%
+test_q4  ppo-context k=0 none    once 0% end 0%
+test_q4  ppo-context k=1 correct once 86% end 63%
+test_q4  ppo-context k=1 wrong   once 3% end 0%
+test_q4  ppo-context k=2 correct once 89% end 67%
+test_q4  ppo-context k=2 wrong   once 4% end 0%
+test_q4  ppo-context k=4 correct once 86% end 67%
+test_q4  ppo-context k=4 wrong   once 4% end 0%
+test_q4  ppo-context k=8 correct once 90% end 65%
+test_q4  ppo-context k=8 wrong   once 4% end 0%
+test_q4  bc-context k=0 none    once 0% end 0%
+test_q4  bc-context k=1 correct once 86% end 58%
+test_q4  bc-context k=1 wrong   once 3% end 0%
+test_q4  bc-context k=2 correct once 89% end 66%
+test_q4  bc-context k=2 wrong   once 5% end 1%
+test_q4  bc-context k=4 correct once 88% end 64%
+test_q4  bc-context k=4 wrong   once 4% end 0%
+test_q4  bc-context k=8 correct once 89% end 64%
+test_q4  bc-context k=8 wrong   once 3% end 0%
+test_q4  ppo teacher (sees goal)  once 95% end 93%
+test_q4  bc teacher (sees goal)  once 95% end 94%

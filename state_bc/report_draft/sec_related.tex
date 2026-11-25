@@ -45,8 +45,16 @@ for a query state given an in-context dataset of interactions, and it explores a
 al.~\cite{raparthy2023generalization} trained transformers to solve new sequential decision tasks from a few demonstrations and
 studied which data properties make this possible.
 
+Closest to our motivation, Smith et al.~\cite{smith2026transformers} study in-context \emph{low-level} control. A GPT-2-style
+transformer stabilizes cartpole and acrobot systems whose physical parameters are hidden, inferring them from a short unforced
+trajectory in its context while imitating an analytic expert controller. Success generally improves with context length, and some
+out-of-distribution systems are stabilized. Training on noise-free expert trajectories was a key failure: in-distribution cartpole
+success fell to 5\%, from 86\% when states were perturbed during expert control.
+
 \textbf{Relation to our work.} Prompt-DT, Gato and Raparthy et al.\ show that trajectory prompts can specify a task, but in large
-multi-task settings where context use is hard to isolate. Algorithm Distillation and DPT learn from rewards. Our setting uses
+multi-task settings where context use is hard to isolate. Smith et al.\ show in-context control with hidden dynamics. Our context
+instead holds demonstrations of the task, the hidden variable is the goal rather than physical parameters, the task involves
+contact, and wrong-goal controls test whether the model uses its context. Algorithm Distillation and DPT learn from rewards. Our setting uses
 no rewards and no return conditioning: the model imitates fixed teachers, and the only task variable is a hidden goal. That makes
 the controls exact, since a wrong-goal prompt changes only the goal and keeps the query states identical. It also lets us measure
 directly how much of the teacher's success the in-context learner recovers.

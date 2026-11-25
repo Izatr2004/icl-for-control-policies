@@ -1,6 +1,12 @@
 % Introduction. Part of the team paper; included by main.tex.
+\providecommand{\inprogress}[1]{\textcolor{red}{[In progress: #1]}}
 \section{Introduction}
 \label{sec:intro}
+
+Suppose a robot is shown one recording of a T-shaped block being pushed across a table to some spot, and is then asked to push the
+block to the same spot from a different start. Nothing marks the spot, so the robot has to work out where it is from the recording.
+This paper asks whether a transformer can learn to do this \emph{in context}, from demonstrations in its prompt, the way language
+models pick up tasks from examples.
 
 Large language models can perform a new task from a few examples in their prompt, with no weight update~\cite{brown2020language}.
 This \emph{in-context learning} (ICL) is hard to study in natural language, because neither the task family nor the optimal
@@ -16,12 +22,31 @@ predictions feed back into the inputs. A small error in one action changes the n
 episode~\cite{ross2010efficient}, and a low teacher-forced loss need not give a working controller.
 
 We study this in a controlled setting: Push-T~\cite{florence2021implicit} in ManiSkill~\cite{tao2024maniskill3}, where the goal
-position of the T varies between episodes and is \emph{hidden} from the learner. Two goal-conditioned teachers see the goal: a PPO
-policy and a behavior-cloning (BC) policy distilled from it. A GPT-2-style transformer sees only demonstrations from these
+position of the T varies between episodes and is \emph{hidden} from the learner. Two goal-conditioned teachers see the goal: a Proximal
+Policy Optimization (PPO) policy and a behavior-cloning (BC) policy distilled from it. A GPT-2-style transformer sees only demonstrations from these
 teachers and the current state with the goal removed, so the demonstrations are its only source of information about the goal.
 We train it on goals in three quadrants of the goal region and test it on new goals in those quadrants and in the held-out
 fourth quadrant. To check that success comes from reading the context, every evaluation is repeated with demonstrations of a
 \emph{different} goal and with no demonstrations, from the same initial states.
+
+\paragraph{Why not just give the learner the goal?} A policy that sees the goal solves this task: our teachers are such policies.
+The question is not how to solve Push-T but whether a learner can recover a task variable it is never told, from demonstrations
+alone. A simpler alternative is to read the goal off the block's final position in a demonstration and hand it to a goal-seeing
+policy. That baseline bounds how much inference the transformer needs to do (Section~\ref{sec:conclusion}).
+\inprogress{goal-estimate baseline.}
+
+\paragraph{Key questions and hypotheses.} %CHECK: confirm these match what the team expected in the proposal
+\begin{enumerate}
+  \item[(i)] Can a transformer trained only to predict teacher actions from demonstration prompts infer a hidden goal well enough to
+    control the robot in closed loop? We expected success close to the teachers' on new goals from the training region, and near
+    zero with wrong-goal or no demonstrations.
+  \item[(ii)] Does this hold for goals in a region never seen in training? We expected a moderate drop on the held-out quadrant,
+    whose goals combine coordinate signs that appear in training.
+  \item[(iii)] How many demonstrations are needed? Following in-context regression, where error falls as examples are
+    added~\cite{garg2022can}, we expected success to rise with the number of demonstrations $k$.
+  \item[(iv)] Does teacher-forced action error predict closed-loop success? We expected lower offline error to mean higher
+    closed-loop success, with compounding errors~\cite{ross2010efficient} as the main risk.
+\end{enumerate}
 
 \paragraph{Contributions.}
 \begin{itemize}
@@ -34,11 +59,13 @@ fourth quadrant. To check that success comes from reading the context, every eva
     or no demonstrations it reaches 1--2\%. A single demonstration already gives about 90\%.
   \item \textbf{On held-out goals, reaching transfers but holding does not.} In the held-out quadrant the transformer still reaches
     the goal in 86--89\% of episodes, but keeps the T there at the end in only 64--67\%, against 93--94\% for the teachers.
-  \item \textbf{A closed-loop threshold on offline error, replicated across implementations.} A model that already prefers
-    correct demonstrations offline can still fail completely in closed loop. An independent implementation reproduces every
-    qualitative finding.
+  \item \textbf{Offline error alone does not predict closed-loop success, and the findings replicate.} A pilot model that
+    already preferred correct demonstrations offline, with 9$\times$ the final model's action error, scored 0\% in closed loop
+    (Section~\ref{sec:threshold}). An independent implementation reproduces every qualitative finding (Section~\ref{sec:compare}).
 \end{itemize}
 
-\paragraph{Scope.} The team's plan covers a $2 \times 2$ grid of teachers: full-state or camera observations, crossed with PPO or BC
-training. This draft reports the full-state row only. The camera-based teachers are in progress and not part of these results.
+\paragraph{Scope.} This draft studies teachers that observe the full simulator state. Teachers that observe camera images are in
+progress and not part of these results. We report the first version of the study, \emph{v1}, in which one learner is trained on
+prompts from both teachers and the BC teacher is distilled from the PPO teacher. A planned second version, \emph{v2}, trains one
+learner per teacher type, with a BC teacher trained independently of PPO (Section~\ref{sec:conclusion}).
 %CHECK: adjust to match the proposal's framing and the camera teachers' status

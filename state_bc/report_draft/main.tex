@@ -25,23 +25,20 @@
   \textcolor{red}{[Authors: full names to be added]}\\  % TODO: all four team members' full names, in the agreed order
   CS182, University of California, Berkeley
 }
-\date{Draft, November 24, 2026}
+\date{}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Transformers trained on prompts of input--output examples can learn new functions in context, and controlled studies have made
-this measurable for regression. We ask whether the same recipe works for closed-loop control, where the task must be inferred
-from trajectories and errors compound over time. We train a 9.75M-parameter GPT-2 to imitate two goal-conditioned teachers on
-variable-goal Push-T, a PPO policy and a behavior-cloning policy distilled from it. The goal is removed from the transformer's
-input, so it must infer the goal from $k$ demonstrations in its prompt. On unseen goals from the training quadrants it reaches
-91--92\% success, matching the goal-seeing teachers. With demonstrations of a different goal, or none, the same model scores
-1--2\%. A single demonstration is nearly enough. On goals in a held-out quadrant it still reaches the goal in 86--89\% of episodes
-but keeps the T there in only 64--67\%, against 93--94\% for the teachers. A pilot model that already preferred correct
-demonstrations offline scored 0\% in closed loop, which shows that closed-loop evaluation is necessary. An independent
-implementation reproduces all qualitative findings. Results are from one training seed; more seeds and a goal-estimation baseline
-are in progress.
+Transformers trained on prompts of input--output examples can learn new functions in context, without weight updates. We test
+whether this carries over to closed-loop robot control, where the task must be inferred from demonstrations and errors compound
+over time. On Push-T with the goal position removed from its input, a 9.75M-parameter GPT-2-style transformer, trained from scratch
+to imitate goal-conditioned Proximal Policy Optimization (PPO) and behavior-cloning (BC) teachers, infers the goal from the
+demonstrations in its prompt and matches the teachers on unseen goals. It reaches the goal in 91--92\% of episodes (teachers
+92--94\%), against 1--2\% when its demonstrations show a different goal or are removed. On goals in a held-out region it still
+reaches the goal in 86--89\% of episodes but keeps the block there in only 64--67\%, against 93--94\% for the teachers. These results
+come from one training seed; more seeds and a goal-estimation baseline are in progress.
 \end{abstract}
 
 \input{sec_intro}
@@ -54,18 +51,33 @@ are in progress.
 \bibliography{refs}
 
 \appendix
+\section{Disclosure of AI use}
+\label{app:ai}
+\inprogress{full disclosure of every AI tool used and what each was used for (code, literature search, writing and figures).}
+% Notes for whoever writes this section (comments, not printed):
+% - Claude Code (Anthropic), running Claude Opus 5.5, for the full-state BC teacher and the in-context transformer (state_bc/):
+%   wrote and tested most of that code under the authors' direction (BC distillation pipeline, pusht_icl.py, Colab notebooks,
+%   make_figures.py); read the logs and computed the reported numbers and intervals; drafted large parts of this report (related
+%   work, method, results, conclusion) and generated the figures, all reviewed and edited by the authors; suggested and summarized
+%   related work, including the Smith et al. CDC 2026 paper.
+% - cs182-paper-skill (public Claude Code skill by a classmate): used with Claude Code to review the draft against the course
+%   requirements, including a cold-reader test by a separate model instance that saw only the PDF.
+% - Add every other tool the team used (e.g. ChatGPT, Codex, Copilot).
+
 \input{sec_appendix_nathan}
 
 \section{PPO teacher and environment details}
 \label{sec:ppo}
-\inprogress{Jimmy: PPO teacher training (ManiSkill PPO baseline, 50M environment steps, seed 1, settings and training curve), the
+\inprogress{PPO teacher training (ManiSkill PPO baseline, 50M environment steps, seed 1, settings and training curve), the
 \texttt{PushTVarGoal-v1} environment (goal sampling, quadrant layout, T and arm start distributions, success criterion), and the
-per-quadrant teacher evaluation protocol (100 episodes per quadrant, fixed seeds, 80\% freeze bar). Reported teacher test results:
-PPO 93.8\% / 91.5\% and distilled BC 91.5\% / 88.8\% mean success-once / success-at-end.}
+per-quadrant teacher evaluation protocol: 100 episodes per quadrant with fixed seeds, and a teacher is frozen only if its
+success-once is at least 80\% in every quadrant on validation episodes. Reported teacher test results: PPO 93.8\% / 91.5\% and
+distilled BC 91.5\% / 88.8\% mean success-once / success-at-end, with per-quadrant numbers to be tabulated here.}
 
 \section{Reproducibility}
 \label{app:repro}
-Code: \url{https://github.com/Izatr2004/icl-for-control-policies}, branch \texttt{nathan-state-bc}. %CHECK: make the repo public or add reviewers before release
+Code: \href{https://github.com/Izatr2004/icl-for-control-policies}{\texttt{github.com/Izatr2004/icl-for-control-policies}},
+branch \texttt{nathan-state-bc}. %CHECK: make the repo public or add reviewers before release
 The transformer is in \path{state_bc/pusht_icl.py} (subcommands \texttt{collect}, \texttt{train}, \texttt{offline},
 \texttt{eval}). The Colab notebook \path{notebooks/Train_PushT_ICL_Transformer.ipynb} runs the whole pipeline on one L4 GPU
 in about 4.5\,h. Every figure and table in this paper is regenerated from the committed result files, with no GPU or simulator, by

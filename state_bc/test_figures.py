@@ -39,7 +39,7 @@ class CommittedResultsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(sys, "argv", ["make_figures.py", "--out", d]):
             mf.main()
             names = {p.name for p in Path(d).iterdir()}
-            for stem in ("fig_training", "fig_success_vs_k", "fig_action_error_vs_k"):
+            for stem in ("fig_setup", "fig_training", "fig_success_vs_k", "fig_action_error_vs_k"):
                 self.assertTrue({f"{stem}.pdf", f"{stem}.png"} <= names)
             md = (Path(d) / "tables.md").read_text(encoding="utf-8")
             self.assertIn("| Test, Q1–Q3 goals | PPO | once | 91.2 [88.4, 93.4]", md)

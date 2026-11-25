@@ -904,6 +904,7 @@ pushing strategy changes with the target angle (which way and how far to turn th
 | 2026-11-23 | **Freeze run 4's BC teacher as the full-state BC teacher** (`teachers/bc_teacher.pt` in session `20261123T230947Z_run4_bc_from_jimmy`) | Test success-once 89–94% in every quadrant (bar 80%), about 2 points below Jimmy's PPO; success-at-end 84–93% |
 | 2026-11-23 | **Use Jimmy's `PushTVarGoal-v1` and his frozen PPO teacher; run 4 distills the BC teacher from it** | One shared environment for all transformer data; PPO is Jimmy's role and BC is distilled from it; his teacher holds the goal (at-end about 90%) and his goal region is wider. Run 3b's teachers are kept as a record, not used for transformer data. Cross-evaluation skipped for now. |
 | 2026-11-24 | **The v1 report uses only the two full-state teachers: Jimmy's PPO and Nathan's distilled BC.** The camera-observation teachers (Izat, Neil) are future work | They are the only teachers trained on `PushTVarGoal-v1` so far. Both transformer runs (Nathan v1, Jimmy two-seed) already use exactly these two, so no new training is needed for the draft |
+| 2026-11-24 | **PPO and BC are meant to be separate function classes; the full-state BC teacher will later be retrained on real demonstration data in sim, not distilled from PPO** (Nathan) | v1's BC is distilled from the PPO teacher, so the two classes are nearly identical by construction (closed-loop results agree within 1-3 points). That makes v1 a degenerate case of the two-class question. An independently trained BC teacher makes the classes genuinely different. Open: the demonstration source for PushTVarGoal-v1 goals (ManiSkill's released Push-T demos are fixed-goal), and retraining the transformer on the new BC data. |
 
 ## v1 plan: variable-goal Push-T (from `CODEX_CONTEXT.md`, 2026-11-23)
 
@@ -1122,3 +1123,31 @@ examples many w fit the data, and the best predictor averages over them. For pol
   - The layout only approximates NeurIPS; switch to the official style file before submission.
   - Jimmy's PPO and environment appendix is a placeholder.
   - Every citation was written from memory and is marked to be checked.
+- **2026-11-24:** Paper updated to make the teacher design explicit.
+  - v1 is one mixed-teacher learner, and its BC teacher is distilled from PPO, so the PPO and BC classes nearly coincide.
+  - The "PPO and BC interchangeable" claim is reframed accordingly, and a limitation is added.
+  - The main table's column is now "Prompt", and the method says that one checkpoint is prompted with each teacher's demonstrations
+    in turn.
+  - Added a v2 plan to the introduction and conclusion: BC retrained on demonstration data, one transformer per class,
+    cross-class evaluation.
+  - Jimmy's run stays in the paper as an independent replication with its own 2 seeds, not as extra seeds of this run, because the
+    training settings differ.
+- **2026-11-24:** Ran the classmate-made `cs182-paper-skill` (github.com/YashDThapliyal/cs182-paper-skill) on the team's Overleaf
+  draft, including its cold-reader test (a separate model instance that saw only the PDF).
+  - 54 fixes in total, applied to `report_draft/`, which now mirrors Overleaf: the team's NeurIPS-style edits, their conclusion
+    prose and their AI-use appendix were synced first.
+  - Additions: explicit key questions and hypotheses, and whether each held; a full AI-use appendix; the Ranade group's CDC 2026
+    paper on in-context control (arXiv 2611.07291); the exact success rule (90% overlap) and goal layout from `pusht_vargoal.py`;
+    a compute paragraph; real reasons in the hyperparameter table; notation clashes fixed (H for the horizon, η for the BC noise);
+    softened claims; "teacher types" instead of "function classes".
+  - Removed the duplicated limitations section.
+  - Moved four tables or blocks to the appendix to stay within 10 pages.
+  - `make_figures.py` now also draws a setup diagram (new Figure 1), and the training and success figures are easier to read.
+    `test_figures.py` checks the new figure.
+  - The step-by-step list for applying the fixes in Overleaf is `CHANGES.md`, generated outside the repo.
+- **2026-11-24:** The paper's AI-use appendix is now a red placeholder, because Neil is writing it in depth. LaTeX comments under it
+  record what Claude Code and the review skill were used for on the state-BC and transformer work, so that information isn't lost.
+- **2026-11-24:** Overleaf is now the main copy of the paper. `report_draft/` here holds the review-fixed version that was uploaded
+  to Overleaf (with the original title kept). It does not yet include three edits Nathan made directly in Overleaf: the short BC
+  history in Appendix C, the short PPO/environment appendix, and the plain-sentence note on seeds and the goal-estimate baseline in
+  Section 3.5. Download the Overleaf source to sync before the final version.

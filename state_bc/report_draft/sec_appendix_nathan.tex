@@ -19,8 +19,89 @@ test ($Q_4$) & 0.0076 & 0.0031 / 0.077 & 0.0029 / 0.082 & 0.0027 / 0.088 & 0.004
 \end{table}
 Wrong-goal error is lower on $Q_4$ because the wrong goal is another $Q_4$ goal, closer on average than goals spread over three quadrants.
 
+Teacher-forced error is lowest at $k = 4$ and slightly higher at $k = 8$, most clearly on $Q_4$ (0.0041 vs 0.0027). The difference
+does not appear in closed loop. One possible reason, which we have not tested, is that each $k$ gets a fifth of the training steps,
+so the position embeddings used only by $k = 8$ prompts (positions 201--400) are trained on the fewest prompts.
+
 \section{Development history of the BC teacher}
 \label{app:teacher-history}
-\inprogress{short summary of runs 1--3 from \texttt{state\_bc/README.md}. Run 1 used plain BC on released demonstrations (19\% / 10\%
-success); run 2 added noisy expert rollouts and DAgger (98\% / 78\%, with DAgger adding nothing measurable); run 3 trained our own
-variable-goal environment and PPO, then the team adopted the shared \texttt{PushTVarGoal-v1}.}
+\inprogress{a short summary of the earlier BC experiments. On the original fixed-goal task, plain BC on released
+demonstrations reached 19\% / 10\% success-once / success-at-end, and adding noisy expert rollouts and DAgger reached 98\% / 78\%,
+with DAgger adding nothing measurable. A third run built a separate variable-goal environment and PPO teacher, before the team
+adopted the shared \texttt{PushTVarGoal-v1}.}
+
+\section{Goal splits}
+\begin{table}[h]
+\centering
+\caption{Goal splits for the transformer. Each goal has 10 demonstrations per teacher. Teacher columns give the success-once /
+success-at-end of those demonstrations (\%).}
+\label{tab:splits}
+\begin{tabular}{lccccc}
+\toprule
+Split & Quadrants & Goals & Demos (both teachers) & PPO demos & BC demos \\
+\midrule
+train & $Q_1$--$Q_3$ & 2{,}048 & 40{,}960 & 93.8 / 89.3 & 93.1 / 86.8 \\
+val & $Q_1$--$Q_3$ & 128 & 2{,}560 & 93.5 / 87.1 & 92.2 / 84.8 \\
+test (in distribution) & $Q_1$--$Q_3$ & 128 & 2{,}560 & 94.1 / 91.1 & 93.4 / 87.7 \\
+test (held out) & $Q_4$ & 128 & 2{,}560 & 94.5 / 93.4 & 92.7 / 90.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Transformer hyperparameters}
+\label{app:hparams}
+\begin{table}[h]
+\centering
+\caption{Transformer hyperparameters. Nothing was tuned on test data. The only earlier run is a 3k-step pilot with the same settings.}
+\label{tab:hparams}
+\small
+\begin{tabular}{p{0.19\linewidth}p{0.37\linewidth}p{0.33\linewidth}}
+\toprule
+Setting & Value & Reason \\
+\midrule
+Layers / width / heads & 12 / 256 / 8 & GPT-2 setup of~\cite{garg2022can} \\
+Optimizer & AdamW~\cite{loshchilov2019adamw}, lr $10^{-4}$, no weight decay & lr as in~\cite{garg2022can} \\
+Batch size & 64 prompts & as in~\cite{garg2022can} \\
+Schedule & 1k-step linear warmup, cosine~\cite{loshchilov2017sgdr} to 10\% & standard; not tuned \\
+Training steps & 100k & compute budget (3.6\,h on one L4); val.\ loss still decreasing \\
+Context sizes $k$ & $\{0,1,2,4,8\}$, uniform & from no context to 8 demos; $k \le 8$ leaves at least one of a goal's 10 demos for the query \\
+Subsampling stride $r$ & 4 (25 pairs per demo) & with every step, $k = 8$ needs 1{,}601 tokens, over GPT-2's 1{,}024 positions; $r = 4$ needs 401 \\
+Precision & bf16 autocast, gradient clip 1.0 & bf16 for speed on the L4 (not compared with fp32); clip 1.0 is a common default \\
+Checkpoint selection & lowest val.\ MSE averaged over $k \in \{0,1,2,4,8\}$ (correct goal; no demos at $k = 0$) & uses validation goals only; it selected the final step \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Closed-loop evaluation procedure}
+\label{app:procedures}
+\begin{algorithm}[h]
+\caption{Closed-loop evaluation of one condition (vectorized over the 512 episodes in practice)}
+\label{alg:closed-loop}
+\begin{algorithmic}[1]
+\Require frozen $f_\theta$; support $D$ of $k$ subsampled demonstrations (Eq.~\ref{eq:prompt}); goal $g$; initial-state seed
+\State $s_0 \gets \textsc{Reset}(g, \text{seed})$ \Comment{same seed for every condition}
+\For{$t = 0, \dots, H-1$}
+  \State $a_t \gets \mathrm{clip}\big(f_\theta(D, \phi(s_t)),\, -1,\, 1\big)$ \Comment{the goal is never an input}
+  \State $s_{t+1} \gets \textsc{Step}(s_t, a_t)$; record whether the episode is a success at $t+1$
+\EndFor
+\State \Return success-once, success-at-end
+\end{algorithmic}
+\end{algorithm}
+
+\section{Main run vs.\ the independent run}
+\begin{table}[h]
+\centering
+\caption{Main run vs.\ the independent run at $k = 4$ (success-once / at-end, \%). Independent-run success rates are means over its
+two seeds, and its validation MSE is the range over the seeds. The rows differ in several settings at once (see text).}
+\label{tab:compare}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccc}
+\toprule
+Run & Steps, schedule & Val.\ MSE (correct) & $Q_1$--$Q_3$, PPO demos & $Q_4$, PPO demos \\
+\midrule
+Main run (1 seed) & 100k, warmup + cosine & 0.0015 & 91.2 / 87.5 & 86.1 / 67.0 \\
+Independent run (2-seed mean) & 50k, constant & 0.004--0.006 & 83 / 68 & 78 / 56 \\
+\bottomrule
+\end{tabular}
+\end{table}

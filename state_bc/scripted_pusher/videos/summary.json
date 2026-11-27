@@ -1,0 +1,68 @@
+{
+ "params": {
+  "c_gyr": 0.08,
+  "rho": 0.06,
+  "push_lengths": [
+   0.012,
+   0.025,
+   0.045,
+   0.075,
+   0.11
+  ],
+  "top_k": 3,
+  "standoff": 0.025,
+  "tip_margin": 0.018,
+  "move_speed": 0.45,
+  "push_speed": 0.22,
+  "retreat": 0.007,
+  "push_lead": 0.03,
+  "max_push_steps": 40,
+  "max_approach_steps": 25,
+  "steer_radius": 0.035,
+  "steer_gain_min": 0.985,
+  "lift_penalty": 0.004,
+  "travel_weight": 0.05,
+  "z_push": 0.015,
+  "z_lift": 0.075,
+  "gain": 3.0,
+  "pos_tol": 0.007,
+  "ang_tol": 0.05,
+  "noise_std": 0.004,
+  "noise_tau": 0.4,
+  "noise_fade": 0.06,
+  "speed_jitter": 0.15,
+  "standoff_jitter": 0.008
+ },
+ "randomize": true,
+ "seed_base": 1001,
+ "results": {
+  "Q1": {
+   "episodes": 25,
+   "success_once": 0.08,
+   "success_at_end": 0.08,
+   "mean_first_success_step": 81.0
+  },
+  "Q2": {
+   "episodes": 25,
+   "success_once": 0.0,
+   "success_at_end": 0.0,
+   "mean_first_success_step": null
+  },
+  "Q3": {
+   "episodes": 25,
+   "success_once": 0.08,
+   "success_at_end": 0.04,
+   "mean_first_success_step": 78.0
+  },
+  "Q4": {
+   "episodes": 25,
+   "success_once": 0.04,
+   "success_at_end": 0.04,
+   "mean_first_success_step": 89.0
+  },
+  "mean": {
+   "success_once": 0.05,
+   "success_at_end": 0.04
+  }
+ }
+}

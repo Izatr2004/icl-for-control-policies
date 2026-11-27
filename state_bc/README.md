@@ -1151,3 +1151,112 @@ examples many w fit the data, and the best predictor averages over them. For pol
   to Overleaf (with the original title kept). It does not yet include three edits Nathan made directly in Overleaf: the short BC
   history in Appendix C, the short PPO/environment appendix, and the plain-sentence note on seeds and the goal-estimate baseline in
   Section 3.5. Download the Overleaf source to sync before the final version.
+- **2026-11-26:** Considered OCBench (Park and Levine, arXiv 2610.07056; seohong.me/projects/ocbench) as the source of BC training
+  data for v2's independent BC teacher.
+  - **Not usable directly:** it is MuJoCo with a UR5e arm and a Robotiq gripper, its tasks are block, drawer, puzzle and bowling tasks,
+    and it has no Push-T task and no goal-conditioned target. Its states and actions cannot train a policy for ManiSkill's
+    `PushTVarGoal-v1` (31-number state, 7 joint-delta actions, `panda_stick`).
+  - **Useful idea:** its demonstrations come from scripted policies designed to be demo-like (smooth randomness, history-dependent,
+    50 Hz) rather than from RL. A scripted Push-T pusher for `PushTVarGoal-v1` in that spirit is one candidate for an independent
+    BC teacher. The others are human teleoperation in sim, or re-targeted released demos.
+  - **Larger option, not recommended for this project:** moving the whole study to an OCBench task would discard v1.
+- **2026-11-26:** Built a prototype scripted, demo-like Push-T pusher (`scripted_pusher/`), in OCBench's style, as a possible
+  source of independent BC demonstrations for v2.
+  - **Design:** a quasi-static push planner, approach with lift-over, pushing that steers while in contact, then a hold phase.
+    It outputs native joint-delta actions through damped-least-squares IK and adds smooth randomness.
+  - **Result:** 5% / 4% success-once / at-end over 25 validation episodes per quadrant, far from the 80% bar. Top-down videos are
+    in `scripted_pusher/videos/`.
+  - **Fixes found while building it:** push force (a lead target), the tip riding onto the T, inside-corner wedging, and a
+    calibration of the limit-surface length (0.055 m to 0.08 m).
+  - **Remaining failure:** the greedy one-push planner stalls on the angle, and repositioning takes most of the step budget.
+    Next: plan several pushes ahead, or use the simulator as the model. Not committed.
+- **2026-11-26:** Searched for an existing Push-T dataset compatible with `PushTVarGoal-v1`. **None found:** no ManiSkill or
+  `panda_stick` data with varied goals. Candidates for re-targeting:
+  - **ManiSkill `PushT-v1` Hub demos:** about 719 rollouts of a PPO policy, fixed goal. A LeRobot conversion keeps 706 episodes.
+    Not independent of RL, so not useful for an independent BC teacher.
+  - **`lerobot/pusht` (Diffusion Policy):** 206 human episodes and 25,650 frames, in a 2-D pymunk simulator in pixel units, with a
+    fixed goal.
+  - **Wei et al. 2025, sim-and-real co-training** (`weiadam8/sim_and_real_cotraining_push_t_dataset`, MIT licence):
+    - 520 human gamepad-teleoperated episodes in Drake, at 10 Hz, in metres
+    - absolute pusher xy target actions
+    - per-episode goal, but only within about 1.5 cm and 0.06 rad
+    - about 0.9 GB with images
+  - **DINO-WM's PushT** (18,500 noisy expert trajectories, hosted on OSF): how it was generated is unverified.
+
+  **Main concern for all human data:** episodes are much slower than ours. The Wei et al. median is 211 steps at 10 Hz (about 21 s);
+  ours are 100 steps at 20 Hz (5 s). Re-targeted demos would have to run about 4× faster than recorded.
+- **2026-11-26:** Re-targeted Wei et al.'s human Push-T demos into `PushTVarGoal-v1` (`scripted_pusher/retarget_wei/`). Only the
+  8 MB of position arrays were downloaded, no images.
+  - **Data facts:** metres; absolute pusher targets that are reached exactly. Each demo's target equals its final T pose
+    (relabelled afterwards). Humans move the pusher at about 6 cm/s, 1.36 m per demo (median).
+  - **Geometry check:** their T angle is ours − π, and their T is about 10% smaller. Both are corrected.
+  - **Replay:** a rigid map from each demo's goal to a goal in our quadrants; the T and the arm are placed at the demo's start
+    (IK error < 1 mm); the human pusher path is replayed through IK as joint-delta actions, with pauses skipped and a steady
+    speed so it fits 100 steps.
+  - **Results on 20 demos:** 0% success both at 0.3 m/s (55% of demos fit in 100 steps) and at 0.45 m/s (95% fit). Median final
+    error is about 16 cm and 1.4–1.6 rad.
+  - **Object-relative replay is flawed by design:** during a push the human's pusher moves with the T, so "stay at this spot on
+    the T" just chases it off the table.
+  - **Why world replay fails:** it is physically sensible, but differences in physics, T size and speed (about 4× faster) add
+    up, so later pushes miss. Open-loop replay of human demos does not transfer.
+- **2026-11-26:** The team reframed the paper ("Data Requirements for In-Context Control: Observation Modality and Demonstration
+  Source in Push-T"). Hypothesis 2 is **RL-generated vs human** demonstrations, and the plan is **human teleoperation in
+  `PushTVarGoal-v1`**, training on the raw human trajectories (not rollouts of a BC policy fitted to them).
+  - **Implication:** a scripted pusher, with or without multi-step planning, is neither human nor RL. It would be a third source
+    and does not test hypothesis 2. The scripted-pusher work is paused.
+  - **Next:** a teleoperation tool. Suggestion: slow the simulator during recording (for example 0.25× real time) while still
+    recording 100 control steps at 20 Hz, so humans can produce 5-second episodes comfortably.
+  - **Also flagged:** the new draft's core runs to 12 pages; references start on page 13, over the 10-page limit.
+- **2026-11-26: Teleop budget estimate** (for discussion).
+  - **For comparison:** v1's RL data is 2,048 training goals × 10 demos per teacher. Human data cannot match that, so the
+    human-vs-RL comparison should subsample the RL data to the human budget, as the paper's "matched budgets" already promises.
+  - **Rough minimum:**
+    - training: 128–256 goals × 4 demos = 512–1,024
+    - evaluation prompts: 2 test splits × 64 goals × 4 demos = 512
+    - validation: 32 goals × 4 = 128
+    - total about 1,150–1,650 demos
+  - **Throughput:** at about 30 s per demo (5 s episode in 0.25× slow motion plus reset), that is about 10–14 person-hours, or
+    about 3–4 h each for four people.
+  - **The real unknown** is how few training goals the transformer can learn in-context use from. The proposed first step is
+    to measure that on RL data by subsampling goals and demos per goal. That is also the paper's planned budget sweep.
+  - **Then:** pilot the teleop tool for 30 minutes to measure demos per hour and human success before splitting the work.
+- **2026-11-26: Multi-step planner** (`scripted_pusher/planner_pusher.py`). The team chose a scripted source over teleop, so the
+  report will be reframed.
+  - **Design:** receding-horizon search over two-push sequences with the calibrated quasi-static model. Time costs cover
+    approach, lift and push length, and stand-off points outside the arm's reach are filtered out. Only the first push is
+    executed, then the pusher replans.
+  - **Results** (validation seeds, 100 steps): success 3–12% across variants; the best was 12% (16 episodes), with angle weight
+    0.2 and pushes up to 18 cm.
+  - **Diagnostics:**
+    - Predictions are decent: a 7–8 cm push lands within about 1.4 cm and 0.08 rad of prediction.
+    - About 60% of steps go to approaches, and the tip averages about 1 cm per step, mostly lifts over the T.
+    - **Success is very strict**, measured with the environment's own overlap: 0.5 cm off gives 0.85 and 1 cm gives 0.80
+      (need 0.90); 3° gives 0.92 and 4° gives 0.90. So the T must end within about 3 mm and 3–4°.
+    - Episodes typically get within about 2 cm and 5–10°, then can't do the final millimetres with discrete
+      approach-and-push cycles in the time left. Even with 250 steps, success is about 12%.
+  - **Conclusion:** stop-and-go scripted pushing is a poor fit for mm-precision in 5 s; the PPO teacher pushes continuously
+    with closed-loop corrections. Proposed alternative: sampling-based MPC (MPPI/CEM over tip motions), using the GPU
+    simulator itself as the model. It is still not RL and does not depend on PPO.
+- **2026-11-26: MPPI expert, CPU prototype** (`scripted_pusher/mppi/`).
+  - **Design:** sampling-based MPC that uses the simulator as its model. It samples tip-velocity plans, rolls them out with the
+    state saved and restored, scores them with a plain geometric cost (T pose error plus a small tip-to-T term and effort, not
+    PPO's reward), averages them with exponential weights, executes the first step, and warm-starts the next plan.
+  - **Measured on the laptop CPU** with 16 samples × 6 steps: 1.6 s per control step, so about 2.7 min per episode.
+  - **One episode:** from about 19 cm / 105° off to 8.8 cm / 57°. It pushes continuously, but the budget is far too small to
+    succeed.
+  - **Realistic settings** (256–512 samples × 10–15 steps) need the GPU. On Colab, an estimated (not measured) 1–3 s per episode
+    when several episodes run in one batch: about 1–3.5 h for 4,096 episodes. A Colab pilot is needed to measure speed and
+    success before committing.
+- **2026-11-26: MPPI Colab pilot built** (`notebooks/Pilot_PushT_MPPI_Expert.ipynb`, from `build_notebook_mppi_pilot.py`).
+  - **Batched GPU expert** (`scripted_pusher/mppi/mppi_gpu.py`): E episodes run in lockstep, each with N simulator copies.
+    Every step it syncs the copies to the episode's real state, rolls out N tip-velocity plans for H steps with batched IK,
+    MPPI-weights them, restores the copies and takes the real step. It records the 31-number state, the clean joint-delta
+    label and success; optional action noise gives DART-style data.
+  - **Checked locally on CPU** (1 episode × 1 sample, the only mode the CPU simulator allows):
+    - the whole step loop runs, and the copies stay in sync (difference 0.0)
+    - the recorded state equals the environment's `state` vector exactly
+    - the batched IK matches the validated IK to 5e-8
+    - the notebook's video cell renders
+  - **Not checkable locally:** the multi-copy GPU path. The notebook runs a GPU self-check first.
+  - **Pilot:** 3 budgets (128×8, 256×10, 512×12) × 32 episodes. It reports success per quadrant, measured seconds per episode,
+    and the extrapolated cost for 4,096 and 16,384 demos, plus top-down videos of the best budget.

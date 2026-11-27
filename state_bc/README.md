@@ -1260,3 +1260,36 @@ examples many w fit the data, and the best predictor averages over them. For pol
   - **Not checkable locally:** the multi-copy GPU path. The notebook runs a GPU self-check first.
   - **Pilot:** 3 budgets (128×8, 256×10, 512×12) × 32 episodes. It reports success per quadrant, measured seconds per episode,
     and the extrapolated cost for 4,096 and 16,384 demos, plus top-down videos of the best budget.
+- **2026-11-27:** MPPI pilot ran on Colab. The video cell failed with an ffmpeg broken pipe: 459×459 frames are odd-sized, which H.264
+  rejects, and `macro_block_size=1` disabled padding. Fixed with `macro_block_size=2` in the builder and the notebook. The
+  pilot results themselves were unaffected.
+- **2026-11-27: MPPI pilot 1 results** (Tesla T4, 32 episodes per budget, 8 per quadrant; `pilot_summary.json` on Drive):
+
+  | N × H | success once | at end | median end error | ended < 1 cm & 10° | ended < 3 cm & 20° | s / episode |
+  |---|---|---|---|---|---|---|
+  | 128 × 8 | 3% | 3% | 8.9 cm, 40° | 3% | 25% | 7.1 |
+  | 256 × 10 | 6% | 3% | 6.1 cm, 23° | 6% | 38% | 13.8 |
+  | 512 × 12 | 16% | 9% | 2.1 cm, 17° | 22% | 47% | 27.7 |
+
+  - **Reading:** not usable as is. Small budgets are too short-sighted. At 512 × 12 the failures are mostly near misses, and
+    rotation is the main miss: the cost counted 1 rad as only 6 cm (`rho` 0.06), so 17° cost about the same as 1.8 cm.
+  - **Cost:** 512 × 12 would take about 126 T4-hours for 16,384 episodes, before filtering for success.
+- **2026-11-27: MPPI pilot 2 built** (`notebooks/Pilot_PushT_MPPI_Expert_v2.ipynb`, from
+  `build_notebook_mppi_pilot.py --pilot 2`; the builder's default still builds pilot 1).
+  - **Three changes to `mppi_gpu.py`.** Each is a new `MPPIConfig` field, and the defaults reproduce pilot 1 exactly:
+    1. **`rho` 0.06 → 0.18 m/rad**, so rotation is weighted 3× more and 17° now costs about 5 cm.
+    2. **`w_running` = 0.5:** the pose error averaged over the rollout is added to the end-of-rollout cost. This penalises
+       plans that overshoot and come back, and slow plans.
+    3. **Fine-alignment stage** (`fine_radius` = 4 cm, `fine_scale` = 0.3): when an episode's pose cost is under 4 cm, its
+       perturbations, speed limit and weighting temperature shrink to 0.3×, allowing millimetre-scale corrections.
+  - **Pilot now records per-episode errors:** end and best position error (cm) and angle error (degrees), plus the number of
+    steps spent in the fine stage, in `summary.json`. The section 6 table shows the median end error and the near-miss rates.
+  - **Pilot 2 runs** 256 × 10 and 512 × 12, both with the fixes, with the same seeds and goals as pilot 1, so the numbers are
+    directly comparable.
+  - **Checked on CPU** (1 episode × 1 sample):
+    - pilot 2 settings run end to end
+    - the fine stage switches on when forced (`fine_steps` = 100)
+    - the copies stay in sync (difference 0.0)
+  - **Decision rule:** continue with MPPI only if success-at-end reaches about 50%, or if 256 × 10 becomes good enough to
+    halve the cost. Otherwise stop working on hand-built experts and choose between a different RL expert (e.g. SAC with a
+    geometric reward) and reframing the demonstration-source comparison.

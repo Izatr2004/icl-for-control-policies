@@ -3,11 +3,14 @@
 Measures, on a Colab GPU, how fast the batched MPPI expert runs and how often it succeeds at several search budgets, then
 extrapolates the cost of generating BC demonstrations and renders videos. Rerun after changing
 scripted_pusher/mppi/mppi_gpu.py or the cells below:
-    python state_bc/build_notebook_mppi_pilot.py
+    python state_bc/build_notebook_mppi_pilot.py            # pilot 1 -> Pilot_PushT_MPPI_Expert.ipynb
+    python state_bc/build_notebook_mppi_pilot.py --pilot 2  # pilot 2 -> Pilot_PushT_MPPI_Expert_v2.ipynb
 """
 
+import argparse
 import base64
 import hashlib
+import json
 import subprocess
 from pathlib import Path
 
@@ -16,7 +19,17 @@ from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-OUT = REPO / "notebooks" / "Pilot_PushT_MPPI_Expert.ipynb"
+_ap = argparse.ArgumentParser()
+_ap.add_argument("--pilot", type=int, default=1, choices=[1, 2])
+PILOT = _ap.parse_args().pilot
+OUT = REPO / "notebooks" / ("Pilot_PushT_MPPI_Expert.ipynb" if PILOT == 1 else "Pilot_PushT_MPPI_Expert_v2.ipynb")
+# Pilot 2 fixes, from pilot 1's near-miss analysis (median end 2.1 cm / 17 deg at 512 x 12): weigh rotation 3x more,
+# add a running pose cost, and a fine-alignment stage with slower, smaller pushes near the goal.
+FIX = {"rho": 0.18, "w_running": 0.5, "fine_radius": 0.04, "fine_scale": 0.3}
+if PILOT == 1:
+    CONFIGS = [dict(name=f"N{n}_H{h}", samples=n, horizon=h, config={}) for n, h in [(128, 8), (256, 10), (512, 12)]]
+else:
+    CONFIGS = [dict(name=f"N{n}_H{h}_fix", samples=n, horizon=h, config=FIX) for n, h in [(256, 10), (512, 12)]]
 JIMMY_COMMIT = "c87d8ae3669c10894d765df2d0dd4b61c010e272"
 MPPI = HERE / "scripted_pusher" / "mppi" / "mppi_gpu.py"
 
@@ -30,7 +43,28 @@ cells = []
 md = lambda s: cells.append(new_markdown_cell(s.strip()))  # noqa: E731
 code = lambda s: cells.append(new_code_cell(s.strip()))  # noqa: E731
 
-md("""
+PILOT2_INTRO = """
+# Pilot 2: MPPI expert with rotation weighting and a fine-alignment stage
+
+Pilot 1 (T4, 32 episodes per budget) reached at most 16% success-once / 9% at end (512 × 12, 28 s per episode). Its failures
+were mostly near misses: at 512 × 12 the median episode ended 2.1 cm and 17° from the goal, and 47% ended within 3 cm and 20°.
+Rotation was the main miss because the cost counted 1 rad as only 6 cm. Pilot 2 changes three things in the cost and search:
+
+1. **Rotation weighted 3× more** (`rho` 0.06 → 0.18 m/rad, so 17° costs about 5 cm).
+2. **Running cost**: the pose error averaged over the whole rollout is added (`w_running` 0.5), so plans that push the T past
+   the goal and back, or dawdle, lose.
+3. **Fine-alignment stage**: when the pose cost is under 4 cm, the sampled pushes, speed limit and weighting temperature shrink
+   to 0.3×, so the planner can make millimetre-scale corrections.
+
+Same seeds and goals as pilot 1, so the numbers are directly comparable. Runs 256 × 10 and 512 × 12, 32 episodes each.
+Select **Runtime → Change runtime type → L4 GPU** (a T4 also works, just slower). Expected time on a T4: about 25 minutes.
+Decision rule: continue with MPPI only if success-at-end reaches about 50%, or if 256 × 10 becomes good enough to halve the
+cost; otherwise stop working on hand-built experts.
+"""
+if PILOT == 2:
+    md(PILOT2_INTRO)
+else:
+  md("""
 # Pilot: sampling-based MPC (MPPI) expert for Push-T
 
 **Goal:** measure, before committing compute, how fast a sampling-based planner runs on a Colab GPU and how often it succeeds,
@@ -57,11 +91,11 @@ MS_ROOT = Path("/content/ManiSkill")
 WORK_ROOT = Path("/content/pusht_state_bc")
 WORK_ROOT.mkdir(parents=True, exist_ok=True)
 DRIVE_BASE = Path("/content/drive/MyDrive/182_final_project/state_bc")
-RUN_LABEL = "mppi_pilot"
+RUN_LABEL = "{"mppi_pilot" if PILOT == 1 else "mppi_pilot2"}"
 JIMMY_COMMIT = "{JIMMY_COMMIT}"
 
 EPISODES_PER_BATCH = 8           # episodes run in lockstep; each gets N simulator copies
-CONFIGS = [(128, 8), (256, 10), (512, 12)]   # (samples N, horizon H)
+CONFIGS = {json.dumps(CONFIGS)}   # samples N, horizon H, MPPIConfig overrides
 QUADRANTS = [1, 2, 3, 4]
 
 SESSION = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_" + RUN_LABEL
@@ -180,30 +214,32 @@ run([TRAIN_PY, MPPI_PY, "--self-check", "--episodes-per-batch", 2, "--samples", 
 """)
 
 md("""
-## 5. Pilot: three search budgets
+## 5. Pilot: the search budgets
 
 32 episodes per budget (8 per quadrant). Prints success and measured seconds per control step for each batch of 8 episodes.
 """)
 code("""
 results = {}
-for samples, horizon in CONFIGS:
-    out = OUTPUT_ROOT / f"N{samples}_H{horizon}"
-    run([TRAIN_PY, MPPI_PY, "--episodes-per-batch", EPISODES_PER_BATCH, "--samples", samples, "--horizon", horizon,
-         "--quadrants", *QUADRANTS, "--out", out], show=r"^Q\\d", cwd=WORK_ROOT)
-    results[(samples, horizon)] = json.loads((out / "summary.json").read_text())["summary"]
+for c in CONFIGS:
+    out = OUTPUT_ROOT / c["name"]
+    run([TRAIN_PY, MPPI_PY, "--episodes-per-batch", EPISODES_PER_BATCH, "--samples", c["samples"], "--horizon", c["horizon"],
+         "--config", json.dumps(c["config"]), "--quadrants", *QUADRANTS, "--out", out], show=r"^Q\\d", cwd=WORK_ROOT)
+    results[c["name"]] = json.loads((out / "summary.json").read_text())["summary"]
 """)
 
 md("## 6. Summary and cost extrapolation")
 code("""
-print(f"{'N x H':>9} | {'once':>5} {'end':>5} | {'s/episode':>9} | {'4,096 demos':>11} | {'16,384 demos':>12} | per quadrant (once/end)")
-for (samples, horizon), s in results.items():
+print(f"{'config':>14} | {'once':>5} {'end':>5} | {'median end':>13} | {'<1cm&10deg':>10} {'<3cm&20deg':>10} | "
+      f"{'s/episode':>9} | {'4,096 demos':>11} | per quadrant (once/end)")
+for name, s in results.items():
     per_ep = s["seconds_per_episode"]
     quads = "  ".join(f"Q{q[1]} {v['success_once']:.0%}/{v['success_at_end']:.0%}" for q, v in s["results"].items())
-    print(f"{samples:>4} x {horizon:<3} | {s['mean_success_once']:>5.0%} {s['mean_success_at_end']:>5.0%} | {per_ep:>9.1f} | "
-          f"{per_ep * 4096 / 3600:>9.1f} h | {per_ep * 16384 / 3600:>10.1f} h | {quads}")
+    print(f"{name:>14} | {s['mean_success_once']:>5.0%} {s['mean_success_at_end']:>5.0%} | "
+          f"{s['median_end_cm']:>5.1f} cm {s['median_end_deg']:>3.0f} deg | {s['end_within_1cm_10deg']:>10.0%} "
+          f"{s['end_within_3cm_20deg']:>10.0%} | {per_ep:>9.1f} | {per_ep * 4096 / 3600:>9.1f} h | {quads}")
 print("\\nGPU:", next(iter(results.values()))["gpu"], "| episodes run in lockstep:", EPISODES_PER_BATCH,
       "| cost scales roughly with N x H and improves with more episodes per batch if GPU memory allows.")
-(OUTPUT_ROOT / "pilot_summary.json").write_text(json.dumps({f"N{k[0]}_H{k[1]}": v for k, v in results.items()}, indent=1))
+(OUTPUT_ROOT / "pilot_summary.json").write_text(json.dumps(results, indent=1))
 """)
 
 md("## 7. Videos of the best setting (top-down, drawn from the simulator state each step)")
@@ -222,14 +258,15 @@ def poly(xy, th):
     c, s = np.cos(th), np.sin(th)
     return T_POLY @ np.array([[c, -s], [s, c]]).T + xy
 
-best = max(results, key=lambda k: (results[k]["mean_success_once"], -results[k]["seconds_per_episode"]))
-frames_all = np.load(OUTPUT_ROOT / f"N{best[0]}_H{best[1]}" / "frames.npy", allow_pickle=True).item()
+best = max(results, key=lambda k: (results[k]["mean_success_at_end"], results[k]["mean_success_once"],
+                                    -results[k]["seconds_per_episode"]))
+frames_all = np.load(OUTPUT_ROOT / best / "frames.npy", allow_pickle=True).item()
 video_dir = OUTPUT_ROOT / "videos"
 video_dir.mkdir(exist_ok=True)
 for q, frames in frames_all.items():
     for e in range(len(frames[0]["t_th"])):
-        path = video_dir / f"N{best[0]}_H{best[1]}_Q{q}_ep{e}.mp4"
-        writer = imageio.get_writer(path, fps=20, codec="libx264", quality=7, macro_block_size=1)
+        path = video_dir / f"{best}_Q{q}_ep{e}.mp4"
+        writer = imageio.get_writer(path, fps=20, codec="libx264", quality=7, macro_block_size=2)  # H.264 needs even frame sizes
         trail = []
         for t, f in enumerate(frames):
             fig, ax = plt.subplots(figsize=(4.6, 4.6), dpi=100)
@@ -243,7 +280,7 @@ for q, frames in frames_all.items():
             ax.plot(tr[:, 0], tr[:, 1], color="#1f6feb", lw=1, alpha=0.6)
             ax.plot(*f["tip"][e][:2], "o", color="#1f6feb")
             ax.set_xlim(-0.45, 0.15), ax.set_ylim(-0.38, 0.38), ax.set_aspect("equal"), ax.set_xticks([]), ax.set_yticks([])
-            ax.set_title(f"MPPI N{best[0]} H{best[1]}  Q{q} ep{e}  step {t + 1}/100{'  SUCCESS' if ok else ''}", fontsize=8)
+            ax.set_title(f"MPPI {best}  Q{q} ep{e}  step {t + 1}/100{'  SUCCESS' if ok else ''}", fontsize=8)
             fig.tight_layout(); fig.canvas.draw()
             writer.append_data(np.asarray(fig.canvas.buffer_rgba())[..., :3]); plt.close(fig)
         writer.close()

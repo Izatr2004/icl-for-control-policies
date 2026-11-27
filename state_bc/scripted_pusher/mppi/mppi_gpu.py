@@ -51,6 +51,10 @@ class MPPIConfig:
     z_push: float = 0.015
     gain: float = 3.0
     exec_noise: float = 0.0      # std of noise added to the executed joint-delta action (labels stay clean)
+    # pilot 2 additions (defaults reproduce pilot 1):
+    w_running: float = 0.0       # weight on the mean pose cost over the rollout (penalises overshooting / slow plans)
+    fine_radius: float = 0.0     # metres of pose error below which the fine-alignment stage switches on (0 = off)
+    fine_scale: float = 0.3      # fine stage: sigma, vmax and temperature are multiplied by this
 
 
 # ---------------------------------------------------------------- batched math
@@ -166,12 +170,20 @@ class MPPIExpert:
             eps[:, :, t] = c.smooth * eps[:, :, t - 1] + math.sqrt(1 - c.smooth ** 2) * eps[:, :, t]
         return eps * c.sigma
 
-    def _cost(self, s):
-        c = self.cfg
+    def _pose_cost(self, s):
         e = (s["goal"][:, :2] - s["t_xy"]).norm(dim=-1)
         th = wrap(GOAL_THETA - s["t_th"]).abs()
-        pose = torch.sqrt(e ** 2 + (c.rho * th) ** 2)
-        return pose + c.w_tip * tip_to_t_distance(s["tip"][:, :2], s["t_xy"], s["t_th"])
+        return torch.sqrt(e ** 2 + (self.cfg.rho * th) ** 2)
+
+    def _cost(self, s):
+        return self._pose_cost(s) + self.cfg.w_tip * tip_to_t_distance(s["tip"][:, :2], s["t_xy"], s["t_th"])
+
+    def leader_errors(self):
+        """Leaders' T position error (cm) and angle error (deg), each (E,)."""
+        s = self._snap()
+        e = (s["goal"][:, :2] - s["t_xy"]).norm(dim=-1)[self.leaders] * 100
+        th = torch.rad2deg(wrap(GOAL_THETA - s["t_th"]).abs())[self.leaders]
+        return e, th
 
     @torch.no_grad()
     def step(self):
@@ -182,14 +194,27 @@ class MPPIExpert:
         saved = u.get_state_dict()
         s0 = self._snap()
         obs31 = torch.cat([s0["qpos"], s0["qvel"], s0["tcp"], s0["goal"], s0["tee"]], -1)[self.leaders]
-        cand = (self.plan[:, None] + self._noise()).clamp(-c.vmax, c.vmax)       # (E, N, H, 2)
+        # fine-alignment stage: near the goal, sample smaller and slower pushes and sharpen the weighting
+        scale = torch.ones(E, device=self.device)
+        if c.fine_radius > 0:
+            near = self._pose_cost(s0)[self.leaders] < c.fine_radius
+            scale = torch.where(near, torch.full_like(scale, c.fine_scale), scale)
+        self.fine_active = scale < 1
+        vlim = (c.vmax * scale)[:, None, None, None]
+        self.plan = torch.maximum(torch.minimum(self.plan, vlim[:, 0]), -vlim[:, 0])
+        cand = self.plan[:, None] + self._noise() * scale[:, None, None, None]
+        cand = torch.maximum(torch.minimum(cand, vlim), -vlim)                   # (E, N, H, 2)
         cand[:, 0] = self.plan
         flat = cand.reshape(E * N, c.horizon, 2)
+        running = torch.zeros(E * N, device=self.device)
         for t in range(c.horizon):
             s = self._snap()
             u.step(self._actions(s, flat[:, t]))
-        cost = self._cost(self._snap()).reshape(E, N) + c.w_effort * (cand ** 2).sum((2, 3))
-        w = torch.softmax(-(cost - cost.min(1, keepdim=True).values) / c.temperature, dim=1)
+            if c.w_running > 0:
+                running += self._pose_cost(self._snap()) / c.horizon
+        cost = (self._cost(self._snap()) + c.w_running * running).reshape(E, N) + c.w_effort * (cand ** 2).sum((2, 3))
+        temp = (c.temperature * scale)[:, None]
+        w = torch.softmax(-(cost - cost.min(1, keepdim=True).values) / temp, dim=1)
         self.plan = (w[:, :, None, None] * cand).sum(1)
         u.set_state_dict(saved)
         u._elapsed_steps = steps_before
@@ -253,12 +278,18 @@ def main():
             goals = sample_goals(E, (q,)).numpy()
             expert.reset(goals, seed=seed)
             succ, obs_l, act_l, frames = [], [], [], []
+            best_cm = torch.full((E,), 1e9, device=expert.device)
+            best_deg = torch.full((E,), 1e9, device=expert.device)
+            fine_steps = torch.zeros(E, device=expert.device)
             t0 = time.time()
             for t in range(100):
                 obs31, act, success = expert.step()
                 obs_l.append(obs31.cpu().numpy())
                 act_l.append(act.cpu().numpy())
                 succ.append(success.cpu().numpy())
+                e_cm, e_deg = expert.leader_errors()
+                best_cm, best_deg = torch.minimum(best_cm, e_cm), torch.minimum(best_deg, e_deg)
+                fine_steps += expert.fine_active.float()
                 if b == 0:
                     s = expert._snap()
                     L = expert.leaders[:args.frames_episodes]
@@ -270,7 +301,10 @@ def main():
             for e in range(E):
                 rows.append(dict(quadrant=q, batch=b, episode=e, success_once=bool(succ[e].any()),
                                  success_at_end=bool(succ[e, -1]),
-                                 first_success_step=int(np.argmax(succ[e]) + 1) if succ[e].any() else 0))
+                                 first_success_step=int(np.argmax(succ[e]) + 1) if succ[e].any() else 0,
+                                 end_cm=round(float(e_cm[e]), 2), end_deg=round(float(e_deg[e]), 1),
+                                 best_cm=round(float(best_cm[e]), 2), best_deg=round(float(best_deg[e]), 1),
+                                 fine_steps=int(fine_steps[e])))
             demo_obs.append(np.stack(obs_l, 1))
             demo_act.append(np.stack(act_l, 1))
             demo_succ.append(succ)
@@ -283,13 +317,19 @@ def main():
     for q in args.quadrants:
         r = [x for x in rows if x["quadrant"] == q]
         res[f"Q{q}"] = dict(episodes=len(r), success_once=float(np.mean([x["success_once"] for x in r])),
-                            success_at_end=float(np.mean([x["success_at_end"] for x in r])))
+                            success_at_end=float(np.mean([x["success_at_end"] for x in r])),
+                            median_end_cm=float(np.median([x["end_cm"] for x in r])),
+                            median_end_deg=float(np.median([x["end_deg"] for x in r])))
     n_eps = len(rows)
     summary = dict(config=asdict(cfg), episodes_per_batch=E, num_envs=E * cfg.samples, episodes=n_eps,
                    seconds_total=round(total), seconds_per_episode=round(total / n_eps, 2),
                    gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu", results=res,
                    mean_success_once=float(np.mean([v["success_once"] for v in res.values()])),
-                   mean_success_at_end=float(np.mean([v["success_at_end"] for v in res.values()])))
+                   mean_success_at_end=float(np.mean([v["success_at_end"] for v in res.values()])),
+                   median_end_cm=float(np.median([x["end_cm"] for x in rows])),
+                   median_end_deg=float(np.median([x["end_deg"] for x in rows])),
+                   end_within_1cm_10deg=float(np.mean([x["end_cm"] < 1 and x["end_deg"] < 10 for x in rows])),
+                   end_within_3cm_20deg=float(np.mean([x["end_cm"] < 3 and x["end_deg"] < 20 for x in rows])))
     (out / "summary.json").write_text(json.dumps(dict(summary=summary, episodes=rows), indent=1))
     np.savez_compressed(out / "demos.npz", obs=np.concatenate(demo_obs), actions=np.concatenate(demo_act),
                         success=np.concatenate(demo_succ))
